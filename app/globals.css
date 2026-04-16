@@ -1,0 +1,187 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-space-grotesk);
+  --font-mono: var(--font-space-mono);
+  --font-display: var(--font-doto);
+  
+  --color-black: var(--black);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-border-subtle: var(--border);
+  --color-border-visible: var(--border-visible);
+  --color-accent: var(--accent);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+}
+
+/* ─── Design System Tokens ─────────────────────────────────────────── */
+:root {
+  /* Dark Mode (Default) */
+  --black: #000000;
+  --surface: #111111;
+  --surface-raised: #1A1A1A;
+  --border: #222222;
+  --border-visible: #333333;
+  --text-disabled: #666666;
+  --text-secondary: #999999;
+  --text-primary: #E8E8E8;
+  --text-display: #FFFFFF;
+  --accent: #D71921;
+  --accent-subtle: rgba(215, 25, 33, 0.15);
+  --success: #4A9E5C;
+  --warning: #D4A843;
+  --interactive: #5B9BF6;
+
+  /* Spacing */
+  --space-2xs: 2px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+  --space-3xl: 64px;
+  --space-4xl: 96px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --black: #F5F5F5;
+    --surface: #FFFFFF;
+    --surface-raised: #F0F0F0;
+    --border: #E8E8E8;
+    --border-visible: #CCCCCC;
+    --text-disabled: #999999;
+    --text-secondary: #666666;
+    --text-primary: #1A1A1A;
+    --text-display: #000000;
+    --interactive: #007AFF;
+  }
+}
+
+/* ─── Base Styles ──────────────────────────────────────────────────── */
+body {
+  background: var(--black);
+  color: var(--text-primary);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Typography Utils ─────────────────────────────────────────────── */
+.text-display-xl { font-size: 72px; line-height: 1.0; letter-spacing: -0.03em; font-family: var(--font-display); }
+.text-display-lg { font-size: 48px; line-height: 1.05; letter-spacing: -0.02em; font-family: var(--font-display); }
+.text-display-md { font-size: 36px; line-height: 1.1; letter-spacing: -0.02em; font-family: var(--font-display); }
+.text-label { font-size: 11px; line-height: 1.2; letter-spacing: 0.08em; font-family: var(--font-mono); text-transform: uppercase; }
+.text-mono { font-family: var(--font-mono); }
+
+/* ─── Dot Grid Backgrounds ─────────────────────────────────────────── */
+.dot-grid {
+  background-image: radial-gradient(circle, var(--border-visible) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+.dot-grid-subtle {
+  background-image: radial-gradient(circle, var(--border) 0.5px, transparent 0.5px);
+  background-size: 12px 12px;
+}
+
+/* ─── Components ───────────────────────────────────────────────────── */
+.nothing-card {
+  background: var(--surface);
+  border: 1px solid var(--border-visible);
+  border-radius: 16px;
+  transition: all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.nothing-card-raised {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-visible);
+  border-radius: 16px;
+}
+
+/* ─── Scrollbar ────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-visible); border-radius: 2px; }
+
+/* ─── Button Components (from components.md) ────────────────────────── */
+.btn-nothing {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 12px 24px;
+  min-height: 44px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+.btn-primary {
+  background-color: var(--text-display);
+  color: var(--black);
+  border: none;
+  font-weight: 700;
+}
+.btn-primary:hover {
+  background-color: var(--text-primary);
+}
+.btn-secondary {
+  background-color: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border-visible);
+}
+.btn-secondary:hover {
+  border-color: var(--text-secondary);
+}
+
+/* ─── Animations ───────────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+}
+
+.animate-spin-slow {
+  animation: spin-slow 8s steps(8) infinite;
+}
+
+.animate-spin-mechanical {
+  animation: spin-slow 2s steps(8) infinite;
+}
+
+
+/* ─── Segmented Progress Bar ────────────────────────────────────────── */
+.segmented-progress {
+  display: flex;
+  gap: 2px;
+  width: 100%;
+}
+.segment {
+  flex: 1;
+  height: 8px;
+  background: var(--border);
+}
+.segment-filled {
+  background: var(--text-display);
+}
+.segment-accent {
+  background: var(--accent);
+}
+.segment-success {
+  background: var(--success);
+}
+.segment-warning {
+  background: var(--warning);
+}
