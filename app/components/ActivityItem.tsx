@@ -1,13 +1,13 @@
 "use client";
 
 import type { Activity } from "@/app/types";
-import { Bike, Footprints, Waves } from "lucide-react";
+import { Bike, Footprints, Waves, Activity as ActivityIcon } from "lucide-react";
 
 interface ActivityItemProps {
   activity: Activity;
 }
 
-const sportConfig = {
+const sportConfig: Record<string, { icon: any, label: string, status: string }> = {
   Run: {
     icon: Footprints,
     label: "RUNNING",
@@ -22,6 +22,16 @@ const sportConfig = {
     icon: Bike,
     label: "CYCLING",
     status: "warning",
+  },
+  Core: {
+    icon: ActivityIcon,
+    label: "CORE / PILATES",
+    status: "success",
+  },
+  Strength: {
+    icon: ActivityIcon,
+    label: "STRENGTH",
+    status: "success",
   },
   Other: {
     icon: Footprints,
