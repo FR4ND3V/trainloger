@@ -110,7 +110,8 @@ export async function triggerManualSync(isFull: boolean = false) {
   }
 
   try {
-    await syncUserData(user.id, isFull)
+    const days = isFull ? 3650 : 90
+    await syncUserData(user.id, days)
     
     // Force revalidation of all pages that consume this data
     revalidatePath('/') 

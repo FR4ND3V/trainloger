@@ -4,7 +4,7 @@ import { getIntervalsAuthHeader, getUserIntervalsCredentials } from './intervals
 
 const INTERVALS_BASE = "https://intervals.icu/api/v1"
 
-export async function syncUserData(userId: string, isFullSync: boolean = false) {
+export async function syncUserData(userId: string, daysBack: number = 90) {
   const supabase = await createAdminClient()
   
   // 1. Get credentials
@@ -23,14 +23,13 @@ export async function syncUserData(userId: string, isFullSync: boolean = false) 
   const authHeader = getIntervalsAuthHeader(apiKey)
 
   const now = new Date()
-  const daysBack = isFullSync ? 3650 : 90 // 10 years or 90 days
   const oldest = new Date(now)
   oldest.setDate(now.getDate() - daysBack)
   
   const oldestStr = oldest.toISOString().split('T')[0]
   const newestStr = now.toISOString().split('T')[0]
 
-  console.log(`Syncing ${isFullSync ? 'FULL HISTORY' : 'STANDARD'} data for user ${userId} from ${oldestStr} to ${newestStr}`)
+  console.log(`Syncing data for user ${userId} (${daysBack} days) from ${oldestStr} to ${newestStr}`)
 
   // 2. Fetch & Save Wellness
   try {
