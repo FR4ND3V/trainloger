@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
+import { Info } from "lucide-react";
 import CalendarView from "../components/CalendarView";
 import type { CalendarEvent } from "../types";
 
