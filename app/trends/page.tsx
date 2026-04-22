@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import { 
   TrendingUp, 
   Droplets, 
@@ -63,7 +64,6 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 export default function TrendsPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [syncState, setSyncState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
   
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -155,7 +155,12 @@ export default function TrendsPage() {
           </div>
           
           <div className="flex items-center gap-3">
-             <SyncButton state={syncState} onClick={() => fetchData(true)} lastSync={data?.syncedAt} />
+             {data?.syncedAt && (
+               <span className="text-[9px] font-mono text-[var(--text-disabled)] uppercase tracking-widest hidden md:block">
+                 Última Sincro: {new Date(data.syncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+               </span>
+             )}
+             <SyncButton variant="dashboard" onSyncComplete={() => fetchData(true)} />
           </div>
         </header>
 
@@ -171,11 +176,36 @@ export default function TrendsPage() {
           </div>
         )}
         
-        {/* Error States */}
+        {/* Error Handling & Configuration Prompt */}
         {error && !loading && (
-          <div className="nothing-card p-6 border-red-900/30 bg-red-900/10">
-            <p className="text-red-500 font-mono text-[13px]">{error}</p>
-          </div>
+          <section className="animate-fade-in">
+            <div className="nothing-card p-8 border-[var(--accent)]/30 bg-[var(--accent)]/5 flex flex-col md:flex-row items-center justify-between gap-6">
+              <div className="space-y-2">
+                <div className="flex items-center gap-3 text-[var(--accent)]">
+                  <TrendingUp className="h-5 w-5" strokeWidth={1.5} />
+                  <span className="text-label font-bold uppercase tracking-widest">Macro Analysis Error</span>
+                </div>
+                <p className="text-[14px] font-mono text-[var(--text-primary)] uppercase tracking-wide">
+                  {error}
+                </p>
+              </div>
+              {error.includes("configuration") || error.includes("credentials") ? (
+                <Link 
+                  href="/settings"
+                  className="btn-nothing btn-primary whitespace-nowrap"
+                >
+                  Configurar Credenciales
+                </Link>
+              ) : (
+                <button 
+                  onClick={() => fetchData()}
+                  className="btn-nothing btn-secondary whitespace-nowrap"
+                >
+                  Reintentar Conexión
+                </button>
+              )}
+            </div>
+          </section>
         )}
 
         {/* Dashboard Content */}
@@ -225,9 +255,9 @@ export default function TrendsPage() {
                         </div>
                         <LineChartIcon className="h-4 w-4 text-[var(--accent)]" strokeWidth={1.5} />
                     </div>
-                    <div className="h-[350px] w-full">
+                    <div className="h-[350px] w-full flex items-center justify-center overflow-hidden">
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={data.chartData}>
+                            <AreaChart data={data.chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
                                 <XAxis 
                                     dataKey="date" 
@@ -281,9 +311,9 @@ export default function TrendsPage() {
                         </div>
                         <BarChart3 className="h-4 w-4 text-[var(--interactive)]" strokeWidth={1.5} />
                     </div>
-                    <div className="h-[350px] w-full">
+                    <div className="h-[350px] w-full flex items-center justify-center overflow-hidden">
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={monthlyChartData}>
+                            <BarChart data={monthlyChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
                                 <XAxis 
                                     dataKey="date" 

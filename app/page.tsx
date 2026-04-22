@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import { 
   Activity as ActivityIcon, 
   TrendingUp, 
@@ -100,6 +101,8 @@ export default function DashboardPage() {
   async function fetchData(isSync = false) {
     try {
       if (!isSync) setLoading(true);
+      if (isSync) setSyncState("loading");
+      
       const params = new URLSearchParams({
         view,
         month: selectedMonth.toString(),
@@ -107,14 +110,22 @@ export default function DashboardPage() {
       });
       const res = await fetch(`/api/stats?${params}`);
       const result = await res.json();
+      
       if (result.error) throw new Error(result.error);
+      
       setData(result);
       setError(null);
+      if (isSync) setSyncState("success");
     } catch (err) {
       console.error(err);
-      setError(err instanceof Error ? err.message : "Error de conexión");
+      const msg = err instanceof Error ? err.message : "Error de conexión";
+      setError(msg);
+      if (isSync) setSyncState("error");
     } finally {
       if (!isSync) setLoading(false);
+      if (isSync) {
+        setTimeout(() => setSyncState("idle"), 3000);
+      }
     }
   }
 
@@ -247,10 +258,45 @@ export default function DashboardPage() {
               <Download className="h-4 w-4" strokeWidth={1.5} />
               <span>Exportar JSON</span>
             </button>
-            <SyncButton state={syncState} onClick={() => fetchData(true)} lastSync={data?.syncedAt} />
+            <SyncButton 
+              variant="dashboard" 
+              onSyncComplete={() => fetchData(false)} 
+            />
           </div>
         </header>
 
+
+        {/* Error Handling & Configuration Prompt */}
+        {error && (
+          <section className="animate-fade-in">
+            <div className="nothing-card p-8 border-[var(--accent)]/30 bg-[var(--accent)]/5 flex flex-col md:flex-row items-center justify-between gap-6">
+              <div className="space-y-2">
+                <div className="flex items-center gap-3 text-[var(--accent)]">
+                  <Info className="h-5 w-5" />
+                  <span className="text-label font-bold">Error de Sistema</span>
+                </div>
+                <p className="text-[14px] font-mono text-[var(--text-primary)] uppercase tracking-wide">
+                  {error}
+                </p>
+              </div>
+              {error.includes("configuration") || error.includes("credentials") ? (
+                <Link 
+                  href="/settings"
+                  className="btn-nothing btn-primary whitespace-nowrap"
+                >
+                  Configurar Credenciales
+                </Link>
+              ) : (
+                <button 
+                  onClick={() => fetchData()}
+                  className="btn-nothing btn-secondary whitespace-nowrap"
+                >
+                  Reintentar Conexión
+                </button>
+              )}
+            </div>
+          </section>
+        )}
 
         {/* Bento Grid de Estado: Layer 2 */}
         <section className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 animate-fade-in-up">
@@ -372,9 +418,9 @@ export default function DashboardPage() {
                     </div>
                     <LineChartIcon className="h-4 w-4 text-[var(--accent)]" strokeWidth={1.5} />
                 </div>
-                <div className="h-[280px] w-full">
+                <div className="h-[300px] w-full flex items-center justify-center overflow-hidden">
                     <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={data?.chartData}>
+                        <AreaChart data={data?.chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
                             <XAxis 
                                 dataKey="date" 
@@ -421,9 +467,9 @@ export default function DashboardPage() {
                     </div>
                     <BarChart3 className="h-4 w-4 text-[var(--interactive)]" strokeWidth={1.5} />
                 </div>
-                <div className="h-[280px] w-full">
+                <div className="h-[300px] w-full flex items-center justify-center overflow-hidden">
                     <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={data?.chartData}>
+                        <BarChart data={data?.chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
                             <XAxis 
                                 dataKey="date" 

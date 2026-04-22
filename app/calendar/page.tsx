@@ -22,10 +22,10 @@ export default function CalendarPage() {
 
     try {
       const res = await fetch(`/api/calendar?start=${start.toISOString().split('T')[0]}&end=${end.toISOString().split('T')[0]}`);
-      
-      if (!res.ok) throw new Error("Error cargando el calendario");
-      
       const data = await res.json();
+      
+      if (data.error) throw new Error(data.error);
+      
       if (data.events) {
         setEvents(data.events);
       }
@@ -53,9 +53,33 @@ export default function CalendarPage() {
             </span>
           </div>
         ) : error ? (
-          <div className="nothing-card p-12 border-red-900/30 text-center space-y-4">
-             <p className="text-red-500 font-mono text-sm tracking-widest uppercase">Error de Sincronización</p>
-             <button onClick={loadEvents} className="btn-nothing btn-secondary">Reintentar</button>
+          <div className="nothing-card p-12 border-[var(--accent)]/30 bg-[var(--accent)]/5 text-center space-y-6 animate-fade-in max-w-2xl mx-auto">
+             <div className="flex flex-col items-center gap-4">
+               <Info className="h-8 w-8 text-[var(--accent)]" />
+               <div className="space-y-2">
+                 <p className="text-[var(--text-primary)] font-mono text-sm tracking-widest uppercase">
+                   {error}
+                 </p>
+                 <p className="text-[10px] font-mono text-[var(--text-disabled)] uppercase tracking-widest">
+                   FALLO CRÍTICO DE SISTEMA // SECURE GATEWAY
+                 </p>
+               </div>
+             </div>
+             
+             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
+               {error.includes("configuration") || error.includes("credentials") ? (
+                 <Link href="/settings" className="btn-nothing btn-primary px-10">
+                   Configurar Credenciales
+                 </Link>
+               ) : (
+                 <button onClick={loadEvents} className="btn-nothing btn-secondary px-10">
+                   Reintentar Conexión
+                 </button>
+               )}
+               <Link href="/" className="btn-nothing btn-secondary border-none text-[9px] tracking-[0.3em] font-bold">
+                 VOLVER AL DASHBOARD
+               </Link>
+             </div>
           </div>
         ) : (
           <CalendarView events={events} />

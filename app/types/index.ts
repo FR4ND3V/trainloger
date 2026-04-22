@@ -19,7 +19,7 @@ export interface ChartDataEntry {
 }
 
 // ─── Activity Types ─────────────────────────────────────────────────
-export type SportType = "Run" | "Swim" | "Ride" | "Other";
+export type SportType = "Run" | "Swim" | "Ride" | "Core" | "Strength" | "Other";
 
 export interface Activity {
   id: string;

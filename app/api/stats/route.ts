@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { WellnessData, Activity, DashboardData, SportType, ChartDataEntry } from "@/app/types";
+import { getUserIntervalsCredentials, getIntervalsAuthHeader } from "@/utils/intervals";
+import { createClient } from '@/utils/supabase/server'
+import { cookies } from 'next/headers'
 
 // ─── Date Range Helpers ─────────────────────────────────────────────
 
@@ -42,23 +45,10 @@ function getYearRange(year: number): { start: string; end: string } {
 
 const INTERVALS_BASE = "https://intervals.icu/api/v1";
 
-function getAuthHeader(): string {
-  const apiKey = process.env.INTERVALS_API_KEY;
-  if (!apiKey) throw new Error("INTERVALS_API_KEY is not set");
-  const encoded = Buffer.from(`API_KEY:${apiKey}`).toString("base64");
-  return `Basic ${encoded}`;
-}
-
-function getAthleteId(): string {
-  const id = process.env.INTERVALS_ATHLETE_ID;
-  if (!id) throw new Error("INTERVALS_ATHLETE_ID is not set");
-  return id;
-}
-
-async function fetchIntervals<T>(endpoint: string): Promise<T> {
+async function fetchIntervals<T>(endpoint: string, authHeader: string): Promise<T> {
   const res = await fetch(`${INTERVALS_BASE}${endpoint}`, {
     headers: {
-      Authorization: getAuthHeader(),
+      Authorization: authHeader,
       Accept: "application/json",
     },
     cache: "no-store",
@@ -76,11 +66,13 @@ async function fetchIntervals<T>(endpoint: string): Promise<T> {
 
 async function fetchWellness(
   athleteId: string, 
+  authHeader: string,
   dateRange: { start: string; end: string },
   view: string
 ): Promise<{ wellness: WellnessData; summaryStats: any; rawWellness: any[] }> {
   const data = await fetchIntervals<any[]>(
-    `/athlete/${athleteId}/wellness?oldest=${dateRange.start}&newest=${dateRange.end}`
+    `/athlete/${athleteId}/wellness?oldest=${dateRange.start}&newest=${dateRange.end}`,
+    authHeader
   );
 
   const latest = data.length > 0 ? data[data.length - 1] : null;
@@ -113,9 +105,10 @@ async function fetchWellness(
   return { wellness, summaryStats, rawWellness: data };
 }
 
-async function fetchActivities(athleteId: string, dateRange: { start: string; end: string }): Promise<Activity[]> {
+async function fetchActivities(athleteId: string, authHeader: string, dateRange: { start: string; end: string }): Promise<Activity[]> {
   const data = await fetchIntervals<any[]>(
-    `/athlete/${athleteId}/activities?oldest=${dateRange.start}&newest=${dateRange.end}`
+    `/athlete/${athleteId}/activities?oldest=${dateRange.start}&newest=${dateRange.end}`,
+    authHeader
   );
 
   return data
@@ -198,7 +191,13 @@ export async function GET(req: NextRequest) {
     const month = parseInt(searchParams.get("month") || new Date().getMonth().toString());
     const year = parseInt(searchParams.get("year") || new Date().getFullYear().toString());
 
-    const athleteId = getAthleteId();
+    // 1. Get current user
+    const cookieStore = await cookies();
+    const supabase = createClient(cookieStore);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+    // 2. Establish date range
     let dateRange;
     if (view === "yearly") {
       dateRange = getYearRange(year);
@@ -208,41 +207,93 @@ export async function GET(req: NextRequest) {
       dateRange = getLastWeekRange();
     }
 
-    const [wellnessRes, activities] = await Promise.all([
-      fetchWellness(athleteId, dateRange, view),
-      fetchActivities(athleteId, dateRange),
-    ]);
+    // 3. Fetch Wellness from Supabase
+    const { data: dbWellness, error: wellnessErr } = await supabase
+      .from('wellness')
+      .select('*')
+      .eq('user_id', user.id)
+      .gte('date', dateRange.start)
+      .lte('date', dateRange.end)
+      .order('date', { ascending: true });
 
-    const { wellness, summaryStats, rawWellness } = wellnessRes;
+    if (wellnessErr) throw wellnessErr;
 
-    // Build Chart Data
-    const chartDataMap: Record<string, ChartDataEntry> = {};
-    
-    // Initialize map with wellness dates
-    rawWellness.forEach(w => {
-      const date = w.id || w.calendarDate;
-      chartDataMap[date] = {
-        date,
-        ctl: w.ctl || null,
-        atl: w.atl || null,
-        tsb: w.rampRate || w.tsb || null,
-        runDistance: 0,
-        swimDistance: 0
-      };
-    });
+    // 4. Fetch Activities from Supabase
+    const { data: dbActivities, error: activitiesErr } = await supabase
+      .from('activities')
+      .select('*')
+      .eq('user_id', user.id)
+      .gte('start_date_local', `${dateRange.start}T00:00:00`)
+      .lte('start_date_local', `${dateRange.end}T23:59:59`)
+      .order('start_date_local', { ascending: false });
 
-    // Add activity distances
-    activities.forEach(a => {
-      const date = a.date.split("T")[0];
-      if (!chartDataMap[date]) {
-        chartDataMap[date] = { date, ctl: null, atl: null, tsb: null, runDistance: 0, swimDistance: 0 };
+    if (activitiesErr) throw activitiesErr;
+
+    // 5. Transform Wellness Data
+    const latest = dbWellness.length > 0 ? dbWellness[dbWellness.length - 1] : null;
+    const wellness: WellnessData = {
+      ctl: latest?.ctl ?? null,
+      atl: latest?.atl ?? null,
+      tsb: latest?.tsb ?? null,
+      hrv: latest?.hrv ?? null,
+      sleepScore: latest?.sleep_score ?? latest?.sleep_quality ?? null,
+      restingHR: latest?.resting_hr ?? null,
+      readiness: latest?.readiness ?? null,
+    };
+
+    const summaryStats: any = {};
+    if ((view === "monthly" || view === "yearly") && dbWellness.length > 0) {
+      const hrvValues = dbWellness.map(d => d.hrv).filter(v => v != null);
+      const tsbValues = dbWellness.map(d => d.tsb).filter(v => v != null);
+      if (hrvValues.length > 0) {
+        summaryStats.maxHRV = Math.max(...hrvValues);
+        summaryStats.minHRV = Math.min(...hrvValues);
       }
-      if (a.type === "Run") chartDataMap[date].runDistance += a.distance;
-      if (a.type === "Swim") chartDataMap[date].swimDistance += a.distance;
+      if (tsbValues.length > 0) {
+        summaryStats.avgTSB = tsbValues.reduce((a, b) => a + b, 0) / tsbValues.length;
+      }
+    }
+
+    // 6. Transform Activities Data
+    const activities: Activity[] = dbActivities.map(a => {
+      const type = a.sport_type as SportType;
+      const distance = a.distance || 0;
+      const duration = a.moving_time || a.elapsed_time || 0;
+
+      const activity: Activity = {
+        id: a.id,
+        name: a.name || `${type} Session`,
+        type,
+        date: a.start_date_local || a.start_date,
+        distance,
+        duration,
+        avgHR: a.average_heartrate || undefined,
+        calories: a.calories || undefined,
+        trainingLoad: a.training_load || a.tss || undefined,
+      };
+
+      // Add Pace/Efficiency for Run/Swim
+      if (type === "Run" && distance > 0) {
+        const paceSecsPerKm = duration / (distance / 1000);
+        const mins = Math.floor(paceSecsPerKm / 60);
+        const secs = Math.round(paceSecsPerKm % 60);
+        activity.pace = `${mins}:${secs.toString().padStart(2, "0")} /km`;
+        activity.efficiencyFactor = a.raw_data?.icu_efficiency_factor;
+        activity.gap = a.raw_data?.gap_pace; // If stored in raw_data
+      }
+
+      if (type === "Swim" && distance > 0) {
+        const paceSecs = duration / (distance / 100);
+        const mins = Math.floor(paceSecs / 60);
+        const secs = Math.round(paceSecs % 60);
+        activity.pace = `${mins}:${secs.toString().padStart(2, "0")} /100m`;
+        activity.swolf = a.swolf || a.raw_data?.average_swolf;
+      }
+
+      return activity;
     });
 
-    const chartData = Object.values(chartDataMap).sort((a, b) => a.date.localeCompare(b.date));
-
+    // 7. Aggregate Summary
     const summary = {
       totalDistanceRun: activities.filter(a => a.type === "Run").reduce((sum, a) => sum + a.distance, 0),
       totalDistanceSwim: activities.filter(a => a.type === "Swim").reduce((sum, a) => sum + a.distance, 0),
@@ -255,13 +306,39 @@ export async function GET(req: NextRequest) {
       minHRV: summaryStats.minHRV ?? wellness.hrv,
     };
 
+    // 8. Build Chart Data
+    const chartDataMap: Record<string, ChartDataEntry> = {};
+    dbWellness.forEach(w => {
+      const date = w.date;
+      chartDataMap[date] = {
+        date,
+        ctl: w.ctl || null,
+        atl: w.atl || null,
+        tsb: w.tsb || null,
+        runDistance: 0,
+        swimDistance: 0
+      };
+    });
+
+    activities.forEach(a => {
+      const date = a.date.split("T")[0];
+      if (!chartDataMap[date]) {
+        chartDataMap[date] = { date, ctl: null, atl: null, tsb: null, runDistance: 0, swimDistance: 0 };
+      }
+      if (a.type === "Run") chartDataMap[date].runDistance += a.distance;
+      if (a.type === "Swim") chartDataMap[date].swimDistance += a.distance;
+    });
+
+    const chartData = Object.values(chartDataMap).sort((a, b) => a.date.localeCompare(b.date));
+
+    // 9. Final Response
     const response: DashboardData = {
       wellness,
       activities,
       weekRange: dateRange,
       summary,
       chartData,
-      syncedAt: new Date().toISOString(),
+      syncedAt: dbWellness.length > 0 ? dbWellness[dbWellness.length - 1].synced_at : new Date().toISOString(),
     };
 
     return NextResponse.json(response);

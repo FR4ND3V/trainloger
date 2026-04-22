@@ -26,6 +26,7 @@ export default function CalendarView({ events }: CalendarViewProps) {
   const [view, setView] = useState<"monthly" | "weekly">("monthly");
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [currentTitle, setCurrentTitle] = useState("");
+  const [activeFilters, setActiveFilters] = useState<string[]>(["Run", "Swim", "Ride", "Core", "Strength", "Other", "Personal"]);
 
   // Map our events to FullCalendar format
   const fcEvents = events.map(ev => {
@@ -33,24 +34,32 @@ export default function CalendarView({ events }: CalendarViewProps) {
     let textColor = "#a1a1aa"; // Zinc-400
     let borderColor = "#27272a"; // Zinc-800
 
-    if (ev.type === "Training") {
-      if (ev.sportType === "Run") {
-        color = "rgba(59, 130, 246, 0.1)"; // Blue-500 tint
-        borderColor = "#3b82f6";
-        textColor = "#60a5fa";
-      } else if (ev.sportType === "Swim") {
-        color = "rgba(34, 211, 238, 0.1)"; // Cyan-400 tint
-        borderColor = "#22d3ee";
-        textColor = "#67e8f9";
-      } else if (ev.sportType === "Ride") {
-        color = "rgba(249, 115, 22, 0.1)"; // Orange-500 tint
-        borderColor = "#f97316";
-        textColor = "#fb923c";
-      } else {
-        color = "rgba(168, 85, 247, 0.1)"; // Purple-500 tint
-        borderColor = "#a855f7";
-        textColor = "#c084fc";
-      }
+    // Apply colors based on sportType if available
+    if (ev.sportType === "Run") {
+      color = "rgba(59, 130, 246, 0.1)"; // Blue-500 tint
+      borderColor = "#3b82f6";
+      textColor = "#60a5fa";
+    } else if (ev.sportType === "Swim") {
+      color = "rgba(34, 211, 238, 0.1)"; // Cyan-400 tint
+      borderColor = "#22d3ee";
+      textColor = "#67e8f9";
+    } else if (ev.sportType === "Ride") {
+      color = "rgba(249, 115, 22, 0.1)"; // Orange-500 tint
+      borderColor = "#f97316";
+      textColor = "#fb923c";
+    } else if (ev.sportType === "Core") {
+      color = "rgba(16, 185, 129, 0.1)"; // Emerald-500 tint
+      borderColor = "#10b981";
+      textColor = "#34d399";
+    } else if (ev.sportType === "Strength") {
+      color = "rgba(245, 158, 11, 0.1)"; // Amber-500 tint
+      borderColor = "#f5a623";
+      textColor = "#fbbf24";
+    } else if (ev.type === "Training") {
+      // Default ट्रेनिंग colors
+      color = "rgba(168, 85, 247, 0.1)"; // Purple-500 tint
+      borderColor = "#a855f7";
+      textColor = "#c084fc";
     }
 
     return {
@@ -66,6 +75,37 @@ export default function CalendarView({ events }: CalendarViewProps) {
       className: `fc-event-${ev.sportType?.toLowerCase() || 'default'}`
     };
   });
+  
+  // Filter events based on active filters
+  const filteredFcEvents = fcEvents.filter(ev => {
+    const sport = ev.extendedProps.sportType || "Other";
+    const type = ev.extendedProps.type;
+
+    // 1. If it has a specific sport detected and that sport is active
+    if (sport !== "Other" && activeFilters.includes(sport)) {
+        return true;
+    }
+
+    // 2. If it's a generic Training event (Other)
+    if (type === "Training" && sport === "Other" && activeFilters.includes("Other")) {
+        return true;
+    }
+
+    // 3. If it's a Personal event not detected as a sport, check "Personal" toggle
+    if (type === "Personal" && sport === "Other" && activeFilters.includes("Personal")) {
+        return true;
+    }
+
+    return false;
+  });
+
+  const toggleFilter = (type: string) => {
+    setActiveFilters(prev => 
+      prev.includes(type) 
+        ? prev.filter(t => t !== type) 
+        : [...prev, type]
+    );
+  };
 
   useEffect(() => {
     if (calendarRef.current) {
@@ -161,7 +201,7 @@ export default function CalendarView({ events }: CalendarViewProps) {
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
             initialView="dayGridMonth"
             headerToolbar={false} // We use custom header
-            events={fcEvents}
+            events={filteredFcEvents}
             dayMaxEvents={3}
             selectable={true}
             editable={true}
@@ -185,24 +225,55 @@ export default function CalendarView({ events }: CalendarViewProps) {
         </div>
       </div>
 
-      {/* Legend */}
-      <div className="flex flex-wrap items-center gap-8 px-6 py-4 border border-[var(--border-visible)] rounded-2xl bg-[var(--surface)]/50 backdrop-blur-sm">
-         <div className="flex items-center gap-2.5">
+      {/* Legend & Interactive Filtering */}
+      <div className="flex flex-wrap items-center gap-6 px-6 py-4 border border-[var(--border-visible)] rounded-2xl bg-[var(--surface)]/50 backdrop-blur-sm">
+         <button 
+           onClick={() => toggleFilter("Run")}
+           className={`flex items-center gap-2.5 transition-all duration-300 ${activeFilters.includes("Run") ? "opacity-100" : "opacity-30 grayscale"}`}
+         >
             <div className="w-2.5 h-2.5 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
-            <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-secondary)]">Carrera</span>
-         </div>
-         <div className="flex items-center gap-2.5">
+            <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-primary)]">Carrera</span>
+         </button>
+         
+         <button 
+           onClick={() => toggleFilter("Swim")}
+           className={`flex items-center gap-2.5 transition-all duration-300 ${activeFilters.includes("Swim") ? "opacity-100" : "opacity-30 grayscale"}`}
+         >
             <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.5)]" />
-            <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-secondary)]">Natación</span>
-         </div>
-         <div className="flex items-center gap-2.5">
+            <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-primary)]">Natación</span>
+         </button>
+         
+         <button 
+           onClick={() => toggleFilter("Ride")}
+           className={`flex items-center gap-2.5 transition-all duration-300 ${activeFilters.includes("Ride") ? "opacity-100" : "opacity-30 grayscale"}`}
+         >
             <div className="w-2.5 h-2.5 rounded-full bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.5)]" />
-            <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-secondary)]">Ciclismo</span>
-         </div>
-         <div className="flex items-center gap-2.5 border-l border-white/10 pl-8 ml-auto">
-            <ListFilter className="h-3 w-3 text-[var(--text-disabled)]" />
-            <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-disabled)]">Filtrado por sistema</span>
-         </div>
+            <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-primary)]">Ciclismo</span>
+         </button>
+
+         <button 
+           onClick={() => toggleFilter("Core")}
+           className={`flex items-center gap-2.5 transition-all duration-300 ${activeFilters.includes("Core") ? "opacity-100" : "opacity-30 grayscale"}`}
+         >
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
+            <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-primary)]">Core</span>
+         </button>
+
+         <button 
+           onClick={() => toggleFilter("Strength")}
+           className={`flex items-center gap-2.5 transition-all duration-300 ${activeFilters.includes("Strength") ? "opacity-100" : "opacity-30 grayscale"}`}
+         >
+            <div className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)]" />
+            <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-primary)]">Fuerza</span>
+         </button>
+
+         <button 
+           onClick={() => toggleFilter("Personal")}
+           className={`flex items-center gap-2.5 border-l border-white/10 pl-8 ml-auto transition-all duration-300 ${activeFilters.includes("Personal") ? "opacity-100" : "opacity-30 grayscale"}`}
+         >
+            <ListFilter className="h-3 w-3 text-[var(--interactive)]" />
+            <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-primary)]">Google Cal</span>
+         </button>
       </div>
 
       {/* Detail Modal */}

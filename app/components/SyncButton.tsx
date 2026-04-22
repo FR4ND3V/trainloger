@@ -1,63 +1,80 @@
-"use client";
+'use client'
 
-import { RefreshCw, Check, AlertCircle } from "lucide-react";
-
-type SyncState = "idle" | "loading" | "success" | "error";
+import { useState } from 'react'
+import { RefreshCw } from 'lucide-react'
+import { triggerManualSync } from '../settings/actions'
 
 interface SyncButtonProps {
-  state: SyncState;
-  onClick: () => void;
-  lastSync?: string | null;
+  variant?: 'minimal' | 'dashboard' | 'settings'
+  isFull?: boolean
+  onSyncComplete?: () => void
 }
 
-export default function SyncButton({ state, onClick, lastSync }: SyncButtonProps) {
-  const isLoading = state === "loading";
+export default function SyncButton({ variant = 'minimal', isFull = false, onSyncComplete }: SyncButtonProps) {
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [lastMessage, setLastMessage] = useState<string | null>(null)
+
+  const handleSync = async () => {
+    if (isSyncing) return
+    
+    setIsSyncing(true)
+    setLastMessage(isFull ? 'Sincronizando Historial...' : 'Sincronizando...')
+    
+    try {
+      const result = await triggerManualSync(isFull)
+      if (result.success) {
+        setLastMessage(isFull ? '✓ Historial Completo' : '✓ Completado')
+        if (onSyncComplete) onSyncComplete()
+        setTimeout(() => setLastMessage(null), 3000)
+      } else {
+        setLastMessage(`Error: ${result.error}`)
+        // If missing keys, specifically guide the user
+        if (result.error.includes('Missing')) {
+           setLastMessage('⚠️ Error Config.')
+        }
+      }
+    } catch (err) {
+      setLastMessage('Error de red')
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
+  if (variant === 'dashboard') {
+    return (
+      <div className="flex flex-col items-end gap-1">
+        <button
+          onClick={handleSync}
+          disabled={isSyncing}
+          className={`btn-nothing ${isSyncing ? 'opacity-70 bg-white/5' : 'btn-secondary'}`}
+        >
+          <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin text-[var(--accent)]' : ''}`} strokeWidth={1.5} />
+          <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar'}</span>
+        </button>
+        {lastMessage && (
+          <span className="text-[9px] font-mono uppercase tracking-[0.2em] text-[var(--accent)] animate-pulse px-2">
+            {lastMessage}
+          </span>
+        )}
+      </div>
+    )
+  }
 
   return (
-    <div className="flex items-center gap-4">
-      {lastSync && (
-        <span className="hidden font-mono text-[10px] text-[var(--text-disabled)] uppercase tracking-wider sm:block">
-          LAST SYNC:{" "}
-          {new Date(lastSync).toLocaleTimeString("es-ES", {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
+    <div className="flex flex-col items-end gap-2">
+      <button 
+        onClick={handleSync}
+        disabled={isSyncing}
+        className={`p-3 bg-[var(--surface)] rounded-full border border-[var(--border-visible)] hover:border-[var(--accent)] transition-all ${isSyncing ? 'opacity-50 cursor-not-allowed' : ''}`}
+        title="Sincronizar ahora"
+      >
+        <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin text-[var(--accent)]' : 'text-[var(--text-secondary)]'}`} />
+      </button>
+      {lastMessage && (
+        <span className="text-[9px] font-mono uppercase tracking-widest text-[var(--accent)] animate-pulse">
+          {lastMessage}
         </span>
       )}
-
-      <button
-        onClick={onClick}
-        disabled={isLoading}
-        className={`group relative btn-nothing disabled:opacity-30 disabled:cursor-not-allowed
-          ${
-            state === "error"
-              ? "border border-[var(--accent)] text-[var(--accent)]"
-              : state === "success"
-                ? "border border-[var(--success)] text-[var(--success)]"
-                : "btn-secondary"
-          }`}
-      >
-        {state === "loading" && (
-          <RefreshCw className="h-4 w-4 animate-spin-mechanical" strokeWidth={1.5} />
-        )}
-        {state === "success" && <Check className="h-4 w-4" strokeWidth={1.5} />}
-        {state === "error" && <AlertCircle className="h-4 w-4" strokeWidth={1.5} />}
-        {state === "idle" && (
-          <RefreshCw className="h-4 w-4 transition-transform duration-200 group-hover:rotate-180" strokeWidth={1.5} />
-        )}
-
-        <span>
-
-          {state === "loading"
-            ? "[ SYNCING ]"
-            : state === "success"
-              ? "[ SYNCED ]"
-              : state === "error"
-                ? "[ ERROR ]"
-                : "SYNC DATA"}
-        </span>
-      </button>
     </div>
-  );
+  )
 }
-

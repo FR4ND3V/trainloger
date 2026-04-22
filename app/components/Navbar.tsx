@@ -8,8 +8,13 @@ import {
   LayoutDashboard, 
   TrendingUp, 
   Calendar as CalendarIcon, 
-  Settings 
+  Settings,
+  LogOut,
+  User as UserIcon 
 } from "lucide-react";
+import { createClient } from "@/utils/supabase/client";
+import { User } from "@supabase/supabase-js";
+import { signOut } from "@/app/login/actions";
 
 const NAV_ITEMS = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -20,6 +25,25 @@ const NAV_ITEMS = [
 
 export default function Navbar() {
   const pathname = usePathname();
+  const [user, setUser] = React.useState<User | null>(null);
+  const supabase = createClient();
+
+  React.useEffect(() => {
+    // 1. Initial fetch
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user);
+    });
+
+    // 2. Listen for changes (Login/Logout)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, [supabase]);
+
+  // Hide Navbar on login page
+  if (pathname === "/login") return null;
 
   return (
     <>
@@ -47,6 +71,22 @@ export default function Navbar() {
                   API: CONNECTED
                 </span>
               </div>
+
+              {user && (
+                <div className="flex items-center gap-3 pr-4 border-r border-[var(--border-visible)]">
+                   <div className="flex flex-col items-end">
+                      <span className="text-[9px] text-label text-[var(--text-disabled)] tracking-widest">AUTENTICADO</span>
+                      <span className="text-[11px] font-mono text-[var(--text-primary)]">{user.email?.split('@')[0]}</span>
+                   </div>
+                   <button 
+                     onClick={() => signOut()}
+                     className="p-2.5 rounded-xl border border-[var(--border-visible)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all group"
+                     title="Cerrar Transmisión"
+                   >
+                     <LogOut className="h-4 w-4" strokeWidth={1.5} />
+                   </button>
+                </div>
+              )}
 
               {/* Nav Links */}
               <div className="flex items-center gap-2">
@@ -99,6 +139,19 @@ export default function Navbar() {
               </Link>
             );
           })}
+          
+          {/* Mobile Logout */}
+          {user && (
+            <button
+              onClick={() => signOut()}
+              className="flex flex-col items-center gap-1.5 text-[var(--error)] opacity-60 hover:opacity-100 transition-all"
+            >
+              <div className="p-2">
+                <LogOut strokeWidth={1.5} className="h-5 w-5" />
+              </div>
+              <span className="text-label text-[9px] leading-none uppercase">Salir</span>
+            </button>
+          )}
         </div>
       </nav>
     </>
