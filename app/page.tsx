@@ -12,11 +12,11 @@ import {
   Trophy,
   History,
   Info,
-  Calendar,
   ChevronDown,
   BarChart3,
   LineChart as LineChartIcon,
-  Download
+  Download,
+  Bike
 } from "lucide-react";
 import {
   AreaChart,
@@ -32,10 +32,12 @@ import {
 
 import MetricCard from "./components/MetricCard";
 import ActivityItem from "./components/ActivityItem";
+import ActivityModal from "./components/ActivityModal";
 import CoachPanel from "./components/CoachPanel";
 import SyncButton from "./components/SyncButton";
 import SegmentedProgressBar from "./components/SegmentedProgressBar";
-import type { DashboardData, CoachAnalysis } from "./types";
+import FitnessStatus from "./components/FitnessStatus";
+import type { DashboardData, CoachAnalysis, Activity } from "./types";
 
 const MONTHS = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -65,8 +67,8 @@ const formatPace = (seconds: number | string | undefined): string => {
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
-      <div className="rounded-xl border border-white/[0.08] bg-[#09090b]/90 p-4 backdrop-blur-md shadow-2xl">
-        <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+      <div className="rounded-xl border border-[var(--border-visible)] bg-[var(--surface)]/90 p-4 backdrop-blur-md shadow-2xl">
+        <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--text-secondary)]">
           {new Date(label).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
         </p>
         <div className="space-y-1.5">
@@ -74,9 +76,9 @@ const CustomTooltip = ({ active, payload, label }: any) => {
             <div key={index} className="flex items-center justify-between gap-8">
               <div className="flex items-center gap-2">
                 <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: entry.color }} />
-                <span className="text-xs text-zinc-400">{entry.name}</span>
+                <span className="text-xs text-[var(--text-secondary)]">{entry.name}</span>
               </div>
-              <span className="text-xs font-bold text-zinc-100">
+              <span className="text-xs font-bold text-[var(--text-primary)]">
                 {entry.name.includes("Distancia") ? `${formatNum(entry.value / 1000, 1)} km` : formatNum(entry.value, 0)}
               </span>
             </div>
@@ -93,10 +95,16 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [syncState, setSyncState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
   
   const [view, setView] = useState<"weekly" | "monthly">("weekly");
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear] = useState(new Date().getFullYear());
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   async function fetchData(isSync = false) {
     try {
@@ -194,6 +202,19 @@ export default function DashboardPage() {
     return { avgSwolf, latestPace, avgStrokes };
   }, [data]);
 
+  const bikeMetrics = useMemo(() => {
+    if (!data) return null;
+    const rides = data.activities.filter(a => a.type === "Ride");
+    if (!rides.length) return null;
+    const withPower = rides.filter(a => a.normalizedPower);
+    const avgNP = withPower.length ? withPower.reduce((s, a) => s + (a.normalizedPower || 0), 0) / withPower.length : null;
+    const withIF = rides.filter(a => a.intensityFactor);
+    const avgIF = withIF.length ? withIF.reduce((s, a) => s + (a.intensityFactor || 0), 0) / withIF.length : null;
+    const totalElev = rides.reduce((s, a) => s + (a.elevationGain || 0), 0);
+    const avgSpeed = rides.reduce((s, a) => s + (a.avgSpeed || 0), 0) / rides.length;
+    return { avgNP, avgIF, totalElev, avgSpeed };
+  }, [data]);
+
   return (
     <div className="min-h-screen bg-black">
       <div className="space-y-24 py-20">
@@ -251,7 +272,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-3">
             <button
               onClick={handleExport}
-              disabled={loading || !data}
+              disabled={!mounted || !!loading || !data}
               className="group btn-nothing btn-secondary"
               title="Descargar reporte detallado para análisis de IA"
             >
@@ -300,32 +321,15 @@ export default function DashboardPage() {
 
         {/* Bento Grid de Estado: Layer 2 */}
         <section className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 animate-fade-in-up">
-          <MetricCard
-            title="Aptitud (CTL)"
-            value={formatNum(data?.wellness.ctl)}
-            unit="pts"
-            icon={<TrendingUp className="h-4 w-4" strokeWidth={1.5} />}
-            subtitle="Fitness global"
-            progress={data?.wellness.ctl ?? 0}
-            maxProgress={150}
-          />
-          <MetricCard
-            title="Fatiga (ATL)"
-            value={formatNum(data?.wellness.atl)}
-            unit="pts"
-            icon={<Zap className="h-4 w-4" strokeWidth={1.5} />}
-            subtitle="Fatiga acumulada"
-            progress={data?.wellness.atl ?? 0}
-            maxProgress={150}
-          />
-          <MetricCard
-            title="Forma (TSB)"
-            value={formatNum(view === "weekly" ? data?.wellness.tsb : data?.summary?.avgTSB)}
-            unit="pts"
-            icon={<ActivityIcon className="h-4 w-4" strokeWidth={1.5} />}
-            subtitle="Recuperación y pico"
-            status={(data?.wellness.tsb ?? 0) < -15 ? "warning" : (data?.wellness.tsb ?? 0) > 5 ? "success" : "neutral"}
-          />
+          <div className="xl:col-span-3">
+             <FitnessStatus 
+               tsb={view === "weekly" ? data?.wellness.tsb : data?.summary?.avgTSB} 
+               ctl={data?.wellness.ctl}
+               atl={data?.wellness.atl}
+               loading={loading}
+             />
+          </div>
+          
           <MetricCard
             title="Running"
             value={formatNum((data?.summary?.totalDistanceRun ?? 0) / 1000, 1)}
@@ -334,73 +338,103 @@ export default function DashboardPage() {
             subtitle="Distancia running"
           />
           <MetricCard
+            title="Ciclismo"
+            value={formatNum((data?.summary?.totalDistanceRide ?? 0) / 1000, 1)}
+            unit="km"
+            icon={<Bike className="h-4 w-4" strokeWidth={1.5} />}
+            subtitle="Distancia ciclismo"
+          />
+          <MetricCard
             title="Natación"
             value={formatNum(data?.summary?.totalDistanceSwim ?? 0, 0)}
             unit="m"
             icon={<Droplets className="h-4 w-4" strokeWidth={1.5} />}
             subtitle="Distancia natación"
           />
-          <MetricCard
-            title="Carga Semanal"
-            value={formatNum(data?.summary?.totalTrainingLoad, 0)}
-            unit="TSS"
-            icon={<Trophy className="h-4 w-4" strokeWidth={1.5} />}
-            subtitle="Training Load (Load)"
-          />
         </section>
 
-        {/* Labs: Running & Swimming Analytics */}
-        {(runMetrics || swimMetrics) && (
-          <section className="grid grid-cols-1 gap-6 lg:grid-cols-2 animate-fade-in-up">
+        {/* Labs: Triathlon Sport Analytics */}
+        {(runMetrics || swimMetrics || bikeMetrics) && (
+          <section className="grid grid-cols-1 gap-6 lg:grid-cols-3 animate-fade-in-up">
             {runMetrics && (
               <div className="nothing-card p-6">
-                  <div className="mb-6 flex items-center justify-between">
-                      <div>
-                          <h3 className="text-label text-[var(--text-display)]">Running Lab</h3>
-                          <p className="text-label text-[var(--text-disabled)] mt-1">Eficiencia y Biomecánica</p>
-                      </div>
-                      <TrendingUp className="h-4 w-4 text-[var(--interactive)]" strokeWidth={1.5} />
+                <div className="mb-6 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-label text-[var(--text-display)]">Running Lab</h3>
+                    <p className="text-label text-[var(--text-disabled)] mt-1">Eficiencia y Biomecánica</p>
                   </div>
-                  <div className="space-y-6">
-                    <div className="flex items-center justify-between border-b border-[var(--border)] pb-4">
-                      <span className="text-label text-[var(--text-secondary)]">Efficiency Factor (EF)</span>
-                      <span className="font-mono text-[var(--text-primary)]">{formatNum(runMetrics.avgEF, 2)}</span>
-                    </div>
-                    <div className="flex items-center justify-between border-b border-[var(--border)] pb-4">
-                      <span className="text-label text-[var(--text-secondary)]">Ritmo GAP</span>
-                      <span className="font-mono text-[var(--text-display)]">{runMetrics.latestGap || "—"}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-label text-[var(--text-secondary)]">Decoupling (Pa:Hr)</span>
-                      <span className="font-mono text-[var(--text-primary)]">{formatNum(runMetrics.avgDecoupling, 1)}%</span>
-                    </div>
+                  <TrendingUp className="h-4 w-4 text-[var(--success)]" strokeWidth={1.5} />
+                </div>
+                <div className="space-y-5">
+                  <div className="flex items-center justify-between border-b border-[var(--border)] pb-4">
+                    <span className="text-label text-[var(--text-secondary)]">Efficiency Factor</span>
+                    <span className="font-mono text-[var(--text-primary)]">{formatNum(runMetrics.avgEF, 2)}</span>
                   </div>
+                  <div className="flex items-center justify-between border-b border-[var(--border)] pb-4">
+                    <span className="text-label text-[var(--text-secondary)]">Ritmo GAP</span>
+                    <span className="font-mono text-[var(--text-display)]">{runMetrics.latestGap || "—"}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-label text-[var(--text-secondary)]">Decoupling Pa:Hr</span>
+                    <span className="font-mono text-[var(--text-primary)]">{formatNum(runMetrics.avgDecoupling, 1)}%</span>
+                  </div>
+                </div>
               </div>
             )}
-            
+
+            {bikeMetrics && (
+              <div className="nothing-card p-6">
+                <div className="mb-6 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-label text-[var(--text-display)]">Cycling Lab</h3>
+                    <p className="text-label text-[var(--text-disabled)] mt-1">Potencia y Eficiencia</p>
+                  </div>
+                  <Bike className="h-4 w-4 text-[var(--warning)]" strokeWidth={1.5} />
+                </div>
+                <div className="space-y-5">
+                  <div className="flex items-center justify-between border-b border-[var(--border)] pb-4">
+                    <span className="text-label text-[var(--text-secondary)]">Potencia Norm. (NP)</span>
+                    <span className="font-mono text-[var(--text-primary)]">{bikeMetrics.avgNP ? `${formatNum(bikeMetrics.avgNP, 0)} W` : "—"}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-b border-[var(--border)] pb-4">
+                    <span className="text-label text-[var(--text-secondary)]">Intensity Factor (IF)</span>
+                    <span className="font-mono text-[var(--text-display)]">{bikeMetrics.avgIF ? formatNum(bikeMetrics.avgIF, 2) : "—"}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-b border-[var(--border)] pb-4">
+                    <span className="text-label text-[var(--text-secondary)]">Vel. Media</span>
+                    <span className="font-mono text-[var(--text-primary)]">{formatNum(bikeMetrics.avgSpeed, 1)} km/h</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-label text-[var(--text-secondary)]">Desnivel Total</span>
+                    <span className="font-mono text-[var(--text-primary)]">+{formatNum(bikeMetrics.totalElev, 0)} m</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {swimMetrics && (
               <div className="nothing-card p-6">
-                  <div className="mb-6 flex items-center justify-between">
-                      <div>
-                          <h3 className="text-label text-[var(--text-display)]">Swim Analytics</h3>
-                          <p className="text-label text-[var(--text-disabled)] mt-1">Eficiencia de Nado</p>
-                      </div>
-                      <Droplets className="h-4 w-4 text-[var(--interactive)]" strokeWidth={1.5} />
+                <div className="mb-6 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-label text-[var(--text-display)]">Swim Analytics</h3>
+                    <p className="text-label text-[var(--text-disabled)] mt-1">Eficiencia de Nado</p>
                   </div>
-                  <div className="space-y-6">
-                    <div className="flex items-center justify-between border-b border-[var(--border)] pb-4">
-                      <span className="text-label text-[var(--text-secondary)]">SWOLF Medio</span>
-                      <span className="font-mono text-[var(--text-primary)]">{formatNum(swimMetrics.avgSwolf, 0)}</span>
-                    </div>
-                    <div className="flex items-center justify-between border-b border-[var(--border)] pb-4">
-                      <span className="text-label text-[var(--text-secondary)]">Ritmo Nado (100m)</span>
-                      <span className="font-mono text-[var(--text-display)]">{swimMetrics.latestPace || "—"}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-label text-[var(--text-secondary)]">Brazadas/Largo</span>
-                      <span className="font-mono text-[var(--text-primary)]">{formatNum(swimMetrics.avgStrokes, 1)}</span>
-                    </div>
+                  <Droplets className="h-4 w-4 text-[var(--interactive)]" strokeWidth={1.5} />
+                </div>
+                <div className="space-y-5">
+                  <div className="flex items-center justify-between border-b border-[var(--border)] pb-4">
+                    <span className="text-label text-[var(--text-secondary)]">SWOLF Medio</span>
+                    <span className="font-mono text-[var(--text-primary)]">{formatNum(swimMetrics.avgSwolf, 0)}</span>
                   </div>
+                  <div className="flex items-center justify-between border-b border-[var(--border)] pb-4">
+                    <span className="text-label text-[var(--text-secondary)]">Ritmo Nado (100m)</span>
+                    <span className="font-mono text-[var(--text-display)]">{swimMetrics.latestPace || "—"}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-label text-[var(--text-secondary)]">Brazadas/Largo</span>
+                    <span className="font-mono text-[var(--text-primary)]">{formatNum(swimMetrics.avgStrokes, 1)}</span>
+                  </div>
+                </div>
               </div>
             )}
           </section>
@@ -449,7 +483,7 @@ export default function DashboardPage() {
                                 name="Forma (TSB)" 
                                 type="stepAfter" 
                                 dataKey="tsb" 
-                                stroke="var(--accent)" 
+                                stroke="#D71921" 
                                 fill="transparent" 
                                 strokeWidth={2} 
                             />
@@ -467,29 +501,32 @@ export default function DashboardPage() {
                     </div>
                     <BarChart3 className="h-4 w-4 text-[var(--interactive)]" strokeWidth={1.5} />
                 </div>
-                <div className="h-[300px] w-full flex items-center justify-center overflow-hidden">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={data?.chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                            <XAxis 
-                                dataKey="date" 
-                                fontSize={10} 
-                                tickFormatter={(str) => new Date(str).toLocaleDateString("es-ES", { day: 'numeric' })}
-                                axisLine={false}
-                                tickLine={false}
-                                tick={{ fill: 'var(--text-disabled)', fontFamily: 'var(--font-mono)' }}
-                            />
-                            <YAxis 
-                                fontSize={10} 
-                                axisLine={false} 
-                                tickLine={false} 
-                                tick={{ fill: 'var(--text-disabled)', fontFamily: 'var(--font-mono)' }} 
-                            />
-                            <Tooltip content={<CustomTooltip />} />
-                            <Bar name="Running" dataKey="runDistance" fill="var(--text-display)" radius={0} />
-                            <Bar name="Swimming" dataKey="swimDistance" fill="var(--border-visible)" radius={0} />
-                        </BarChart>
-                    </ResponsiveContainer>
+                <div className="h-[300px] min-h-[300px] w-full flex items-center justify-center overflow-hidden">
+                    {mounted && data?.chartData && (
+                      <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                          <BarChart data={data?.chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                              <XAxis 
+                                  dataKey="date" 
+                                  fontSize={10} 
+                                  tickFormatter={(str) => new Date(str).toLocaleDateString("es-ES", { day: 'numeric' })}
+                                  axisLine={false}
+                                  tickLine={false}
+                                  tick={{ fill: 'var(--text-disabled)', fontFamily: 'var(--font-mono)' }}
+                              />
+                              <YAxis 
+                                  fontSize={10} 
+                                  axisLine={false} 
+                                  tickLine={false} 
+                                  tick={{ fill: 'var(--text-disabled)', fontFamily: 'var(--font-mono)' }} 
+                              />
+                              <Tooltip content={<CustomTooltip />} />
+                              <Bar name="Running" dataKey="runDistance" fill="var(--success)" radius={0} />
+                              <Bar name="Ciclismo" dataKey="rideDistance" fill="var(--warning)" radius={0} />
+                              <Bar name="Natación" dataKey="swimDistance" fill="var(--interactive)" radius={0} />
+                          </BarChart>
+                      </ResponsiveContainer>
+                    )}
                 </div>
             </div>
         </section>
@@ -517,7 +554,9 @@ export default function DashboardPage() {
                         </span>
                       </div>
                     ) : 
-                    data?.activities.map((a) => <ActivityItem key={a.id} activity={a} />)}
+                    data?.activities.map((a) => (
+                      <ActivityItem key={a.id} activity={a} onClick={setSelectedActivity} />
+                    ))}
                 </div>
 
             </div>
@@ -557,6 +596,12 @@ export default function DashboardPage() {
           </aside>
         </div>
       </div>
+
+      {/* Activity Detail Modal */}
+      <ActivityModal
+        activity={selectedActivity}
+        onClose={() => setSelectedActivity(null)}
+      />
     </div>
   );
 }

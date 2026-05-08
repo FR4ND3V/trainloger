@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Space_Grotesk, Space_Mono, Doto } from "next/font/google";
 import "./globals.css";
-import Navbar from "./components/Navbar";
+import Sidebar from "./components/Sidebar";
 
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-space-grotesk",
@@ -26,6 +26,10 @@ export const metadata: Metadata = {
   keywords: ["training", "dashboard", "intervals.icu", "fitness", "performance", "nothing style"],
 };
 
+import { ThemeProvider } from "./components/ThemeProvider";
+import { SidebarProvider } from "./components/SidebarContext";
+import SidebarLayoutInner from "./components/SidebarLayoutInner";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -35,15 +39,35 @@ export default function RootLayout({
     <html
       lang="es"
       className={`${spaceGrotesk.variable} ${spaceMono.variable} ${doto.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full bg-black text-[#E8E8E8] dot-grid-subtle">
-        <Navbar />
-        <main className="pt-20 pb-28 md:pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-          {children}
-        </main>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var theme = localStorage.getItem('theme');
+                  var supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+                  if (!theme && supportDarkMode) theme = 'dark';
+                  if (!theme) theme = 'light';
+                  document.documentElement.classList.add(theme);
+                } catch (e) {}
+              })();
+            `,
+          }}
+        />
+      </head>
+      <body className="min-h-full bg-[var(--black)] text-[var(--text-primary)] transition-colors duration-300">
+        <ThemeProvider>
+          <SidebarProvider>
+            <SidebarLayoutInner>
+              {children}
+            </SidebarLayoutInner>
+          </SidebarProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
 }
-
 

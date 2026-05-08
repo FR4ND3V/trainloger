@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { WellnessData, Activity, DashboardData, SportType, ChartDataEntry } from "@/app/types";
-import { getUserIntervalsCredentials, getIntervalsAuthHeader } from "@/utils/intervals";
 import { createClient } from '@/utils/supabase/server'
 import { cookies } from 'next/headers'
 
@@ -25,7 +24,7 @@ function getLastWeekRange(): { start: string; end: string } {
 
 function getMonthRange(month: number, year: number): { start: string; end: string } {
   const start = new Date(year, month, 1);
-  const end = new Date(year, month + 1, 0); 
+  const end = new Date(year, month + 1, 0);
   end.setHours(23, 59, 59, 999);
 
   const fmt = (d: Date) => d.toISOString().split("T")[0];
@@ -41,145 +40,139 @@ function getYearRange(year: number): { start: string; end: string } {
   return { start: fmt(start), end: fmt(end) };
 }
 
-// ─── Intervals.icu API Client ───────────────────────────────────────
-
-const INTERVALS_BASE = "https://intervals.icu/api/v1";
-
-async function fetchIntervals<T>(endpoint: string, authHeader: string): Promise<T> {
-  const res = await fetch(`${INTERVALS_BASE}${endpoint}`, {
-    headers: {
-      Authorization: authHeader,
-      Accept: "application/json",
-    },
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Intervals.icu API error ${res.status}: ${text}`);
-  }
-
-  return res.json();
-}
-
-// ─── Data Extraction ────────────────────────────────────────────────
-
-async function fetchWellness(
-  athleteId: string, 
-  authHeader: string,
-  dateRange: { start: string; end: string },
-  view: string
-): Promise<{ wellness: WellnessData; summaryStats: any; rawWellness: any[] }> {
-  const data = await fetchIntervals<any[]>(
-    `/athlete/${athleteId}/wellness?oldest=${dateRange.start}&newest=${dateRange.end}`,
-    authHeader
-  );
-
-  const latest = data.length > 0 ? data[data.length - 1] : null;
-
-  const wellness: WellnessData = {
-    ctl: latest?.ctl ?? null,
-    atl: latest?.atl ?? null,
-    tsb: latest?.rampRate ?? latest?.tsb ?? null,
-    hrv: latest?.hrvSDNN ?? latest?.hrv ?? null,
-    sleepScore: latest?.sleepScore ?? latest?.sleepQuality ?? null,
-    restingHR: latest?.restingHR ?? null,
-    readiness: latest?.readiness ?? null,
-  };
-
-  const summaryStats: any = {};
-
-  if ((view === "monthly" || view === "yearly") && data.length > 0) {
-    const hrvValues = data.map(d => d.hrvSDNN || d.hrv).filter(v => v != null);
-    const tsbValues = data.map(d => d.rampRate || d.tsb).filter(v => v != null);
-
-    if (hrvValues.length > 0) {
-      summaryStats.maxHRV = Math.max(...hrvValues);
-      summaryStats.minHRV = Math.min(...hrvValues);
-    }
-    if (tsbValues.length > 0) {
-      summaryStats.avgTSB = tsbValues.reduce((a, b) => a + b, 0) / tsbValues.length;
-    }
-  }
-
-  return { wellness, summaryStats, rawWellness: data };
-}
-
-async function fetchActivities(athleteId: string, authHeader: string, dateRange: { start: string; end: string }): Promise<Activity[]> {
-  const data = await fetchIntervals<any[]>(
-    `/athlete/${athleteId}/activities?oldest=${dateRange.start}&newest=${dateRange.end}`,
-    authHeader
-  );
-
-  return data
-    .filter((a) => {
-      const type = (a.type || "").toLowerCase();
-      return type === "run" || type === "swim" || type === "ride";
-    })
-    .map((a) => {
-      const type = mapSportType(a.type);
-      const distance = a.distance || 0;
-      const duration = a.moving_time || a.elapsed_time || 0;
-
-      const activity: Activity = {
-        id: a.id?.toString() || crypto.randomUUID(),
-        name: a.name || `${type} Session`,
-        type,
-        date: a.start_date_local || a.start_date || dateRange.start,
-        distance,
-        duration,
-        avgHR: a.average_heartrate || a.hr || undefined,
-        calories: a.calories || undefined,
-        trainingLoad: a.icu_training_load || undefined,
-      };
-
-      if (type === "Run" && distance > 0) {
-        const paceSecsPerKm = duration / (distance / 1000);
-        const mins = Math.floor(paceSecsPerKm / 60);
-        const secs = Math.round(paceSecsPerKm % 60);
-        activity.pace = `${mins}:${secs.toString().padStart(2, "0")} /km`;
-
-        if (a.gap) {
-          const gapSecsPerKm = 1000 / a.gap;
-          const gMins = Math.floor(gapSecsPerKm / 60);
-          const gSecs = Math.round(gapSecsPerKm % 60);
-          activity.gap = `${gMins}:${gSecs.toString().padStart(2, "0")} /km`;
-        }
-        activity.efficiencyFactor = a.icu_efficiency_factor;
-        activity.aerobicDecoupling = a.decoupling;
-        activity.avgCadence = a.average_cadence;
-        activity.strideLength = a.average_stride;
-      }
-
-      if (type === "Swim" && distance > 0) {
-        const paceSecs = duration / (distance / 100);
-        const mins = Math.floor(paceSecs / 60);
-        const secs = Math.round(paceSecs % 60);
-        activity.pace = `${mins}:${secs.toString().padStart(2, "0")} /100m`;
-        activity.swimPace = activity.pace;
-
-        const laps = a.laps?.length || a.num_laps || Math.max(1, Math.round(distance / 25));
-        const strokeCount = a.total_strokes || a.stroke_count || 0;
-        if (strokeCount > 0 && laps > 0) {
-          const avgStrokesPerLap = strokeCount / laps;
-          const avgTimePerLap = duration / laps;
-          activity.swolf = a.average_swolf || Math.round(avgStrokesPerLap + avgTimePerLap);
-          activity.strokeCount = strokeCount;
-          activity.laps = laps;
-        }
-      }
-
-      return activity;
-    })
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-}
-
 function mapSportType(raw: string): SportType {
   const lower = (raw || "").toLowerCase();
-  if (lower === "run" || lower === "running") return "Run";
-  if (lower === "swim" || lower === "swimming") return "Swim";
-  if (lower === "ride" || lower === "cycling" || lower === "bike") return "Ride";
+  
+  // Cycling normalization
+  if (
+    lower === "ride" || 
+    lower === "cycling" || 
+    lower === "bike" || 
+    lower === "virtualride" || 
+    lower === "ebikeride" || 
+    lower.includes("cycling") || 
+    lower.includes("bike") ||
+    lower.includes("ride")
+  ) {
+    return "Ride";
+  }
+
+  // Running normalization
+  if (
+    lower === "run" || 
+    lower === "running" || 
+    lower === "virtualrun" || 
+    lower === "trailrun" || 
+    lower === "treadmill" ||
+    lower.includes("run")
+  ) {
+    return "Run";
+  }
+
+  // Swimming normalization
+  if (
+    lower === "swim" || 
+    lower === "swimming" ||
+    lower.includes("swim")
+  ) {
+    return "Swim";
+  }
+
+  if (lower.includes("core") || lower.includes("pilates")) return "Core";
+  if (lower.includes("strength") || lower.includes("weight")) return "Strength";
+
   return "Other";
+}
+
+// ─── Activity Transformation ────────────────────────────────────────
+
+function transformActivity(a: any): Activity {
+  const type = mapSportType(a.sport_type || a.type || "");
+  const distance = a.distance || 0;
+  const duration = a.moving_time || a.elapsed_time || 0;
+  const raw = a.raw_data || {};
+
+  const activity: Activity = {
+    id: a.id,
+    name: a.name || `${type} Session`,
+    type,
+    date: a.start_date_local || a.start_date,
+    distance,
+    duration,
+    avgHR: a.average_heartrate || raw.average_heartrate || undefined,
+    maxHR: a.max_heartrate || raw.max_heartrate || undefined,
+    calories: a.calories || raw.calories || undefined,
+    trainingLoad: a.training_load || a.tss || raw.suffer_score || undefined,
+    elevationGain: a.total_elevation_gain || raw.total_elevation_gain || undefined,
+    mapPolyline: a.map_polyline || raw.map?.summary_polyline || raw.summary_polyline || raw.polyline || raw.map_polyline || undefined,
+  };
+
+  if (!activity.mapPolyline) {
+     // Check if it's nested in a way Intervals sometimes does
+     if (raw.icu_map_polyline) activity.mapPolyline = raw.icu_map_polyline;
+  }
+
+  // ─── Run ───────────────────────────────────────────────────────
+  if (type === "Run" && distance > 0) {
+    const paceSecsPerKm = duration / (distance / 1000);
+    const mins = Math.floor(paceSecsPerKm / 60);
+    const secs = Math.round(paceSecsPerKm % 60);
+    activity.pace = `${mins}:${secs.toString().padStart(2, "0")} /km`;
+    activity.efficiencyFactor = a.efficiency_factor || raw.icu_efficiency_factor;
+    activity.aerobicDecoupling = a.decoupling || raw.decoupling;
+    activity.avgCadence = a.average_cadence || raw.average_cadence;
+    activity.strideLength = a.average_stride || raw.average_stride;
+
+    // GAP (Grade Adjusted Pace)
+    const gapRaw = a.gap || raw.gap;
+    if (gapRaw) {
+      if (typeof gapRaw === "string") {
+        activity.gap = gapRaw;
+      } else {
+        const gapSecsPerKm = 1000 / gapRaw;
+        const gMins = Math.floor(gapSecsPerKm / 60);
+        const gSecs = Math.round(gapSecsPerKm % 60);
+        activity.gap = `${gMins}:${gSecs.toString().padStart(2, "0")} /km`;
+      }
+    }
+  }
+
+  // ─── Swim ──────────────────────────────────────────────────────
+  if (type === "Swim" && distance > 0) {
+    const paceSecs = duration / (distance / 100);
+    const mins = Math.floor(paceSecs / 60);
+    const secs = Math.round(paceSecs % 60);
+    activity.pace = `${mins}:${secs.toString().padStart(2, "0")} /100m`;
+    activity.swimPace = activity.pace;
+
+    const laps = a.laps || raw.num_laps || Math.max(1, Math.round(distance / 25));
+    const strokeCount = a.total_strokes || raw.total_strokes || raw.stroke_count || 0;
+    if (strokeCount > 0 && laps > 0) {
+      const avgStrokesPerLap = strokeCount / laps;
+      const avgTimePerLap = duration / laps;
+      activity.swolf = a.swolf || raw.average_swolf || Math.round(avgStrokesPerLap + avgTimePerLap);
+      activity.strokeCount = strokeCount;
+      activity.laps = laps;
+    }
+  }
+
+  // ─── Ride ──────────────────────────────────────────────────────
+  if (type === "Ride" && distance > 0) {
+    // Speed in km/h
+    const speedKmh = (distance / 1000) / (duration / 3600);
+    activity.avgSpeed = Math.round(speedKmh * 10) / 10;
+    activity.pace = `${activity.avgSpeed.toFixed(1)} km/h`;
+
+    // Power metrics
+    activity.avgPower = a.average_watts || raw.average_watts || undefined;
+    activity.maxPower = a.max_watts || raw.max_watts || undefined;
+    activity.normalizedPower = a.normalized_power || raw.normalized_power || raw.weighted_average_watts || undefined;
+    activity.intensityFactor = a.intensity_factor || raw.intensity_factor || undefined;
+    activity.tss = a.tss || raw.tss || raw.training_stress_score || undefined;
+    activity.avgCadenceBike = a.average_cadence || raw.average_cadence || undefined;
+  }
+
+  return activity;
 }
 
 // ─── Route Handler ──────────────────────────────────────────────────
@@ -207,7 +200,7 @@ export async function GET(req: NextRequest) {
       dateRange = getLastWeekRange();
     }
 
-    // 3. Fetch Wellness from Supabase
+    // 3. Fetch Wellness for the Chart (Range limited)
     const { data: dbWellness, error: wellnessErr } = await supabase
       .from('wellness')
       .select('*')
@@ -217,6 +210,19 @@ export async function GET(req: NextRequest) {
       .order('date', { ascending: true });
 
     if (wellnessErr) throw wellnessErr;
+
+    console.log(`[Stats API] Found ${dbWellness?.length || 0} wellness records in range`);
+
+    // 3b. Fetch the absolute LATEST Wellness for current metrics
+    const { data: latestWellness } = await supabase
+      .from('wellness')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('date', { ascending: false })
+      .limit(1)
+      .maybeSingle(); // maybeSingle instead of single to avoid error if empty
+
+    console.log(`[Stats API] Latest wellness record:`, latestWellness ? { date: latestWellness.date, tsb: latestWellness.tsb } : 'NONE');
 
     // 4. Fetch Activities from Supabase
     const { data: dbActivities, error: activitiesErr } = await supabase
@@ -230,7 +236,7 @@ export async function GET(req: NextRequest) {
     if (activitiesErr) throw activitiesErr;
 
     // 5. Transform Wellness Data
-    const latest = dbWellness.length > 0 ? dbWellness[dbWellness.length - 1] : null;
+    const latest = latestWellness || (dbWellness.length > 0 ? dbWellness[dbWellness.length - 1] : null);
     const wellness: WellnessData = {
       ctl: latest?.ctl ?? null,
       atl: latest?.atl ?? null,
@@ -241,7 +247,12 @@ export async function GET(req: NextRequest) {
       readiness: latest?.readiness ?? null,
     };
 
-    const summaryStats: any = {};
+    const summaryStats: any = {
+      avgTSB: null,
+      maxHRV: null,
+      minHRV: null,
+    };
+    
     if ((view === "monthly" || view === "yearly") && dbWellness.length > 0) {
       const hrvValues = dbWellness.map(d => d.hrv).filter(v => v != null);
       const tsbValues = dbWellness.map(d => d.tsb).filter(v => v != null);
@@ -250,48 +261,20 @@ export async function GET(req: NextRequest) {
         summaryStats.minHRV = Math.min(...hrvValues);
       }
       if (tsbValues.length > 0) {
-        summaryStats.avgTSB = tsbValues.reduce((a, b) => a + b, 0) / tsbValues.length;
+        summaryStats.avgTSB = tsbValues.reduce((a: number, b: number) => a + b, 0) / tsbValues.length;
       }
     }
 
-    // 6. Transform Activities Data
-    const activities: Activity[] = dbActivities.map(a => {
-      const type = a.sport_type as SportType;
-      const distance = a.distance || 0;
-      const duration = a.moving_time || a.elapsed_time || 0;
-
-      const activity: Activity = {
-        id: a.id,
-        name: a.name || `${type} Session`,
-        type,
-        date: a.start_date_local || a.start_date,
-        distance,
-        duration,
-        avgHR: a.average_heartrate || undefined,
-        calories: a.calories || undefined,
-        trainingLoad: a.training_load || a.tss || undefined,
-      };
-
-      // Add Pace/Efficiency for Run/Swim
-      if (type === "Run" && distance > 0) {
-        const paceSecsPerKm = duration / (distance / 1000);
-        const mins = Math.floor(paceSecsPerKm / 60);
-        const secs = Math.round(paceSecsPerKm % 60);
-        activity.pace = `${mins}:${secs.toString().padStart(2, "0")} /km`;
-        activity.efficiencyFactor = a.raw_data?.icu_efficiency_factor;
-        activity.gap = a.raw_data?.gap_pace; // If stored in raw_data
-      }
-
-      if (type === "Swim" && distance > 0) {
-        const paceSecs = duration / (distance / 100);
-        const mins = Math.floor(paceSecs / 60);
-        const secs = Math.round(paceSecs % 60);
-        activity.pace = `${mins}:${secs.toString().padStart(2, "0")} /100m`;
-        activity.swolf = a.swolf || a.raw_data?.average_swolf;
-      }
-
-      return activity;
-    });
+    // 6. Transform Activities
+    const activities: Activity[] = dbActivities.map(transformActivity);
+    if (activities.length > 0) {
+      console.log(`[Stats API] Debugging first activity:`, {
+        id: dbActivities[0].id,
+        sport_type: dbActivities[0].sport_type,
+        has_raw: !!dbActivities[0].raw_data,
+        raw_id: dbActivities[0].raw_data?.id
+      });
+    }
 
     // 7. Aggregate Summary
     const summary = {
@@ -316,29 +299,36 @@ export async function GET(req: NextRequest) {
         atl: w.atl || null,
         tsb: w.tsb || null,
         runDistance: 0,
-        swimDistance: 0
+        swimDistance: 0,
+        rideDistance: 0,
       };
     });
 
     activities.forEach(a => {
       const date = a.date.split("T")[0];
       if (!chartDataMap[date]) {
-        chartDataMap[date] = { date, ctl: null, atl: null, tsb: null, runDistance: 0, swimDistance: 0 };
+        chartDataMap[date] = { date, ctl: null, atl: null, tsb: null, runDistance: 0, swimDistance: 0, rideDistance: 0 };
       }
       if (a.type === "Run") chartDataMap[date].runDistance += a.distance;
       if (a.type === "Swim") chartDataMap[date].swimDistance += a.distance;
+      if (a.type === "Ride") chartDataMap[date].rideDistance += a.distance;
     });
 
     const chartData = Object.values(chartDataMap).sort((a, b) => a.date.localeCompare(b.date));
 
     // 9. Final Response
-    const response: DashboardData = {
+    const response: DashboardData & { debugInfo?: any } = {
       wellness,
       activities,
       weekRange: dateRange,
       summary,
       chartData,
       syncedAt: dbWellness.length > 0 ? dbWellness[dbWellness.length - 1].synced_at : new Date().toISOString(),
+      debugInfo: activities.length > 0 ? {
+        id: dbActivities[0].id,
+        raw_id: dbActivities[0].raw_data?.id,
+        icu_id: dbActivities[0].raw_data?.icu_id
+      } : null
     };
 
     return NextResponse.json(response);

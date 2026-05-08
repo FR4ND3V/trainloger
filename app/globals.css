@@ -15,9 +15,15 @@
   --color-warning: var(--warning);
 }
 
+/* ─── External Components ─────────────────────────────────────────── */
+@import "leaflet/dist/leaflet.css";
+
+/* ─── External Components ─────────────────────────────────────────── */
+@import "leaflet/dist/leaflet.css";
+
 /* ─── Design System Tokens ─────────────────────────────────────────── */
 :root {
-  /* Dark Mode (Default) */
+  /* Default: Dark Mode */
   --black: #000000;
   --surface: #111111;
   --surface-raised: #1A1A1A;
@@ -45,19 +51,18 @@
   --space-4xl: 96px;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    --black: #F5F5F5;
-    --surface: #FFFFFF;
-    --surface-raised: #F0F0F0;
-    --border: #E8E8E8;
-    --border-visible: #CCCCCC;
-    --text-disabled: #999999;
-    --text-secondary: #666666;
-    --text-primary: #1A1A1A;
-    --text-display: #000000;
-    --interactive: #007AFF;
-  }
+/* Light Mode Overrides */
+.light {
+  --black: #F5F5F5;
+  --surface: #FFFFFF;
+  --surface-raised: #F0F0F0;
+  --border: #E8E8E8;
+  --border-visible: #CCCCCC;
+  --text-disabled: #999999;
+  --text-secondary: #666666;
+  --text-primary: #1A1A1A;
+  --text-display: #000000;
+  --interactive: #007AFF;
 }
 
 /* ─── Base Styles ──────────────────────────────────────────────────── */
@@ -240,4 +245,28 @@ body {
 
 .segment-warning {
   background: var(--warning);
+}
+
+/* ─── Modal Animation ───────────────────────────────────────────────── */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in-up {
+  animation: fadeInUp 0.4s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
 }

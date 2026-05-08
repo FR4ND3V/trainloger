@@ -16,10 +16,29 @@ export interface ChartDataEntry {
   tsb: number | null;
   runDistance: number;
   swimDistance: number;
+  rideDistance: number;
 }
 
 // ─── Activity Types ─────────────────────────────────────────────────
 export type SportType = "Run" | "Swim" | "Ride" | "Core" | "Strength" | "Other";
+
+export interface HRZone {
+  zone: number;
+  name: string;
+  min: number;
+  max: number;
+  seconds: number;
+  percentage: number;
+}
+
+export interface PowerZone {
+  zone: number;
+  name: string;
+  min: number;
+  max: number;
+  seconds: number;
+  percentage: number;
+}
 
 export interface Activity {
   id: string;
@@ -28,10 +47,16 @@ export interface Activity {
   date: string;
   distance: number; // meters
   duration: number; // seconds
-  pace?: string; // min/km for run, min/100m for swim
+  pace?: string; // min/km for run, min/100m for swim, km/h for ride
   avgHR?: number;
+  maxHR?: number;
   calories?: number;
   trainingLoad?: number;
+
+  // Common
+  elevationGain?: number; // meters
+  mapPolyline?: string;   // encoded Google polyline
+
   // Running-specific
   efficiencyFactor?: number;
   aerobicDecoupling?: number;
@@ -44,6 +69,19 @@ export interface Activity {
   strokeCount?: number;
   laps?: number;
   swimPace?: string;
+
+  // Cycling-specific
+  avgPower?: number;          // watts
+  maxPower?: number;          // watts
+  normalizedPower?: number;   // NP watts
+  intensityFactor?: number;   // IF (0–1.x)
+  tss?: number;               // Training Stress Score
+  avgCadenceBike?: number;    // rpm
+  avgSpeed?: number;          // km/h
+
+  // Zones (lazy-loaded in modal)
+  hrZones?: HRZone[];
+  powerZones?: PowerZone[];
 }
 
 // ─── API Response ───────────────────────────────────────────────────

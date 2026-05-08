@@ -16,6 +16,8 @@ import { createClient } from "@/utils/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { signOut } from "@/app/login/actions";
 
+import ThemeToggle from "./ThemeToggle";
+
 const NAV_ITEMS = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Trends", href: "/trends", icon: TrendingUp },
@@ -60,7 +62,9 @@ export default function Navbar() {
             </Link>
 
             {/* Right Side: Status & Links */}
-            <div className="flex items-center gap-8">
+            <div className="flex items-center gap-6">
+              <ThemeToggle />
+
               {/* Status Indicator */}
               <div className="flex items-center gap-2.5 px-3 py-1 rounded-full border border-[var(--border-visible)]">
                 <span className="relative flex h-2 w-2">

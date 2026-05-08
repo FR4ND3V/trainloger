@@ -9,7 +9,8 @@ import {
   Calendar,
   ChevronDown,
   BarChart3,
-  LineChart as LineChartIcon
+  LineChart as LineChartIcon,
+  Zap
 } from "lucide-react";
 import {
   AreaChart,
@@ -38,8 +39,8 @@ const formatNum = (val: number | null | undefined, decimals = 0): string => {
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
-      <div className="rounded-xl border border-white/[0.08] bg-[#09090b]/90 p-4 backdrop-blur-md shadow-2xl">
-        <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+      <div className="rounded-xl border border-[var(--border-visible)] bg-[var(--surface)]/90 p-4 backdrop-blur-md shadow-2xl">
+        <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--text-secondary)]">
           {new Date(label).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" })}
         </p>
         <div className="space-y-1.5">
@@ -47,10 +48,10 @@ const CustomTooltip = ({ active, payload, label }: any) => {
             <div key={index} className="flex items-center justify-between gap-8">
               <div className="flex items-center gap-2">
                 <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: entry.color }} />
-                <span className="text-xs text-zinc-400">{entry.name}</span>
+                <span className="text-xs text-[var(--text-secondary)]">{entry.name}</span>
               </div>
-              <span className="text-xs font-bold text-zinc-100">
-                {entry.name.includes("Distancia") || entry.name.includes("Running") || entry.name.includes("Swimming") ? `${formatNum(entry.value / 1000, 1)} km` : formatNum(entry.value, 0)}
+              <span className="text-xs font-bold text-[var(--text-primary)]">
+                {entry.name.includes("Distancia") || entry.name.includes("Running") || entry.name.includes("Swimming") || entry.name.includes("Ciclismo") ? `${formatNum(entry.value / 1000, 1)} km` : formatNum(entry.value, 0)}
               </span>
             </div>
           ))}
@@ -65,8 +66,13 @@ export default function TrendsPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
   
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const YEARS = [2023, 2024, 2025, 2026];
 
   async function fetchData(isSync = false) {
@@ -99,7 +105,7 @@ export default function TrendsPage() {
   const monthlyChartData = useMemo(() => {
     if (!data?.chartData) return [];
     
-    const monthlyMap: Record<string, { date: string, runDistance: number, swimDistance: number }> = {};
+    const monthlyMap: Record<string, { date: string, runDistance: number, swimDistance: number, rideDistance: number }> = {};
     
     data.chartData.forEach(entry => {
       const dateObj = new Date(entry.date);
@@ -109,18 +115,19 @@ export default function TrendsPage() {
       const monthKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-01`;
       
       if (!monthlyMap[monthKey]) {
-        monthlyMap[monthKey] = { date: monthKey, runDistance: 0, swimDistance: 0 };
+        monthlyMap[monthKey] = { date: monthKey, runDistance: 0, swimDistance: 0, rideDistance: 0 };
       }
       
       monthlyMap[monthKey].runDistance += (entry.runDistance || 0);
       monthlyMap[monthKey].swimDistance += (entry.swimDistance || 0);
+      monthlyMap[monthKey].rideDistance += (entry.rideDistance || 0);
     });
     
     return Object.values(monthlyMap).sort((a, b) => a.date.localeCompare(b.date));
   }, [data]);
 
   return (
-    <div className="min-h-screen bg-black">
+    <div className="min-h-screen bg-[var(--black)]">
       <div className="space-y-24 py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         
         {/* Header */}
@@ -155,7 +162,7 @@ export default function TrendsPage() {
           </div>
           
           <div className="flex items-center gap-3">
-             {data?.syncedAt && (
+             {mounted && data?.syncedAt && (
                <span className="text-[9px] font-mono text-[var(--text-disabled)] uppercase tracking-widest hidden md:block">
                  Última Sincro: {new Date(data.syncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                </span>
@@ -212,12 +219,19 @@ export default function TrendsPage() {
         {!loading && !error && data && (
           <>
             {/* KPI Grid */}
-            <section className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 animate-fade-in-up">
+            <section className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-5 animate-fade-in-up">
               <MetricCard
                 title="Running"
                 value={formatNum((data.summary?.totalDistanceRun ?? 0) / 1000, 1)}
                 unit="km"
                 icon={<Activity className="h-4 w-4" strokeWidth={1.5} />}
+                subtitle="Distancia Anual"
+              />
+              <MetricCard
+                title="Ciclismo"
+                value={formatNum((data.summary?.totalDistanceRide ?? 0) / 1000, 1)}
+                unit="km"
+                icon={<Zap className="h-4 w-4" strokeWidth={1.5} />}
                 subtitle="Distancia Anual"
               />
               <MetricCard
@@ -243,6 +257,7 @@ export default function TrendsPage() {
               />
             </section>
 
+
             {/* Charts Grid */}
             <section className="grid grid-cols-1 gap-6 lg:grid-cols-2 animate-fade-in-up">
                 
@@ -256,8 +271,9 @@ export default function TrendsPage() {
                         <LineChartIcon className="h-4 w-4 text-[var(--accent)]" strokeWidth={1.5} />
                     </div>
                     <div className="h-[350px] w-full flex items-center justify-center overflow-hidden">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={data.chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                        {mounted && data?.chartData && (
+                          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                              <AreaChart data={data.chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
                                 <XAxis 
                                     dataKey="date" 
@@ -292,7 +308,7 @@ export default function TrendsPage() {
                                     name="Forma (TSB)" 
                                     type="monotone" 
                                     dataKey="tsb" 
-                                    stroke="var(--accent)" 
+                                    stroke="#D71921" 
                                     fill="transparent" 
                                     strokeWidth={1.5} 
                                     dot={false}
@@ -312,28 +328,31 @@ export default function TrendsPage() {
                         <BarChart3 className="h-4 w-4 text-[var(--interactive)]" strokeWidth={1.5} />
                     </div>
                     <div className="h-[350px] w-full flex items-center justify-center overflow-hidden">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={monthlyChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                                <XAxis 
-                                    dataKey="date" 
-                                    fontSize={10} 
-                                    tickFormatter={(str) => new Date(str).toLocaleDateString("es-ES", { month: 'short' })}
-                                    axisLine={false}
-                                    tickLine={false}
-                                    tick={{ fill: 'var(--text-disabled)', fontFamily: 'var(--font-mono)' }}
-                                />
-                                <YAxis 
-                                    fontSize={10} 
-                                    axisLine={false} 
-                                    tickLine={false} 
-                                    tick={{ fill: 'var(--text-disabled)', fontFamily: 'var(--font-mono)' }} 
-                                />
-                                <Tooltip content={<CustomTooltip />} />
-                                <Bar name="Running (km)" dataKey="runDistance" stackId="a" fill="var(--text-display)" radius={0} />
-                                <Bar name="Swimming (km)" dataKey="swimDistance" stackId="a" fill="var(--border-visible)" radius={0} />
-                            </BarChart>
-                        </ResponsiveContainer>
+                        {mounted && monthlyChartData.length > 0 && (
+                          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                              <BarChart data={monthlyChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                                  <XAxis 
+                                      dataKey="date" 
+                                      fontSize={10} 
+                                      tickFormatter={(str) => new Date(str).toLocaleDateString("es-ES", { month: 'short' })}
+                                      axisLine={false}
+                                      tickLine={false}
+                                      tick={{ fill: 'var(--text-disabled)', fontFamily: 'var(--font-mono)' }}
+                                  />
+                                  <YAxis 
+                                      fontSize={10} 
+                                      axisLine={false} 
+                                      tickLine={false} 
+                                      tick={{ fill: 'var(--text-disabled)', fontFamily: 'var(--font-mono)' }} 
+                                  />
+                                  <Tooltip content={<CustomTooltip />} />
+                                  <Bar name="Running (km)" dataKey="runDistance" stackId="a" fill="#10B981" radius={0} />
+                                  <Bar name="Ciclismo (km)" dataKey="rideDistance" stackId="a" fill="#F59E0B" radius={0} />
+                                  <Bar name="Swimming (km)" dataKey="swimDistance" stackId="a" fill="#3B82F6" radius={0} />
+                              </BarChart>
+                          </ResponsiveContainer>
+                        )}
                     </div>
                 </div>
 

@@ -44,7 +44,7 @@ export default function CalendarPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-black">
+    <div className="min-h-screen bg-[var(--black)]">
       <div className="py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         
         {loading && events.length === 0 ? (

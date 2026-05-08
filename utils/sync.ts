@@ -32,7 +32,19 @@ export async function syncUserData(userId: string, daysBack: number = 90) {
   console.log(`Syncing data for user ${userId} (${daysBack} days) from ${oldestStr} to ${newestStr}`)
 
   // 2. Fetch & Save Wellness
+  // 2. Fetch & Save Wellness
   try {
+    // 2a. Fetch Athlete for current CTL/ATL/TSB fallback
+    const athleteRes = await fetch(`${INTERVALS_BASE}/athlete/${athleteId}`, {
+      headers: { 'Authorization': authHeader },
+      cache: 'no-store'
+    })
+    let athleteFitness: any = null
+    if (athleteRes.ok) {
+      athleteFitness = await athleteRes.json()
+      console.log(`[Sync] Athlete fitness current:`, { ctl: athleteFitness.ctl, atl: athleteFitness.atl, tsb: athleteFitness.tsb })
+    }
+
     const wellnessRes = await fetch(`${INTERVALS_BASE}/athlete/${athleteId}/wellness?oldest=${oldestStr}&newest=${newestStr}`, {
       headers: { 'Authorization': authHeader },
       cache: 'no-store'
@@ -41,13 +53,16 @@ export async function syncUserData(userId: string, daysBack: number = 90) {
     if (wellnessRes.ok) {
       const wellnessData = await wellnessRes.json()
       if (Array.isArray(wellnessData)) {
+        // Ensure today's date exists in the formatted array even if not in wellnessData
+        let hasToday = wellnessData.some(w => w.id === newestStr);
+        
         const formattedWellness = wellnessData.map((w: any) => ({
           user_id: userId,
           date: w.id,
-          ctl: w.ctl,
-          atl: w.atl,
-          tsb: w.tsb,
-          hrv: w.hrv,
+          ctl: w.ctl ?? w.icu_ctl ?? (w.id === newestStr ? athleteFitness?.ctl : null),
+          atl: w.atl ?? w.icu_atl ?? (w.id === newestStr ? athleteFitness?.atl : null),
+          tsb: w.tsb ?? w.icu_tsb ?? (w.id === newestStr ? athleteFitness?.tsb : null),
+          hrv: w.hrv ?? w.icu_hrv ?? null,
           hrv_score: w.hrv_score,
           resting_hr: w.resting_hr,
           sleep_secs: w.sleep_secs,
@@ -57,6 +72,26 @@ export async function syncUserData(userId: string, daysBack: number = 90) {
           readiness: w.readiness,
           raw_data: w
         }))
+
+        // If today is missing from historical wellness, add it from athlete data
+        if (!hasToday && athleteFitness) {
+          formattedWellness.push({
+            user_id: userId,
+            date: newestStr,
+            ctl: athleteFitness.ctl,
+            atl: athleteFitness.atl,
+            tsb: athleteFitness.tsb,
+            hrv: null,
+            hrv_score: null,
+            resting_hr: null,
+            sleep_secs: null,
+            sleep_quality: null,
+            weight: null,
+            body_fat: null,
+            readiness: null,
+            raw_data: athleteFitness
+          });
+        }
         
         const { error: upsertErr } = await supabase
           .from('wellness')
