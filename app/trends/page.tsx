@@ -315,6 +315,7 @@ export default function TrendsPage() {
                                 />
                             </AreaChart>
                         </ResponsiveContainer>
+                        )}
                     </div>
                 </div>
 
