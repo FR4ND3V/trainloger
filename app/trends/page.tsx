@@ -62,6 +62,72 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
+const MonthlyVolumeTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload || !payload.length) return null;
+
+  // Filter out entries with 0 value (duration)
+  const activeEntries = payload.filter((entry: any) => entry.value > 0);
+
+  if (activeEntries.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-[var(--border-visible)] bg-[var(--surface)]/95 p-4 backdrop-blur-md shadow-2xl">
+      <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--text-disabled)] font-mono">
+        {new Date(label).toLocaleDateString("es-ES", { month: "long", year: "numeric" })}
+      </p>
+      <div className="space-y-1.5">
+        {activeEntries.map((entry: any, index: number) => {
+          let distanceStr = "";
+          let durationStr = "";
+          const mins = entry.value;
+
+          // Format duration
+          const h = Math.floor(mins / 60);
+          const m = Math.round(mins % 60);
+          if (h > 0) {
+            durationStr = m > 0 ? `${h}h ${m}m` : `${h}h`;
+          } else {
+            durationStr = `${m} min`;
+          }
+
+          // Format distance by sport rules
+          if (entry.dataKey === "swimDuration") {
+            const distM = entry.payload.swimDistance || 0;
+            distanceStr = `${new Intl.NumberFormat("es-ES").format(distM)} m`;
+          } else if (entry.dataKey === "rideDuration") {
+            const distKm = (entry.payload.rideDistance || 0) / 1000;
+            distanceStr = `${new Intl.NumberFormat("es-ES", { minimumFractionDigits: 0, maximumFractionDigits: 1 }).format(distKm)} km`;
+          } else if (entry.dataKey === "runDuration") {
+            const distKm = (entry.payload.runDistance || 0) / 1000;
+            distanceStr = `${new Intl.NumberFormat("es-ES", { minimumFractionDigits: 0, maximumFractionDigits: 1 }).format(distKm)} km`;
+          }
+
+          return (
+            <div key={index} className="flex items-center justify-between gap-8">
+              <div className="flex items-center gap-2">
+                <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: entry.color }} />
+                <span className="text-xs text-[var(--text-secondary)]">{entry.name}</span>
+              </div>
+              <span className="text-xs font-bold text-[var(--text-primary)] font-mono">
+                {distanceStr} ({durationStr})
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+const formatYAxisHours = (value: number) => {
+  if (value === 0) return "0";
+  const hours = value / 60;
+  if (hours % 1 === 0) {
+    return `${hours}h`;
+  }
+  return `${hours.toFixed(1)}h`;
+};
+
 export default function TrendsPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -105,7 +171,15 @@ export default function TrendsPage() {
   const monthlyChartData = useMemo(() => {
     if (!data?.chartData) return [];
     
-    const monthlyMap: Record<string, { date: string, runDistance: number, swimDistance: number, rideDistance: number }> = {};
+    const monthlyMap: Record<string, {
+      date: string;
+      runDistance: number;
+      swimDistance: number;
+      rideDistance: number;
+      runDuration: number;
+      swimDuration: number;
+      rideDuration: number;
+    }> = {};
     
     data.chartData.forEach(entry => {
       const dateObj = new Date(entry.date);
@@ -115,12 +189,23 @@ export default function TrendsPage() {
       const monthKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-01`;
       
       if (!monthlyMap[monthKey]) {
-        monthlyMap[monthKey] = { date: monthKey, runDistance: 0, swimDistance: 0, rideDistance: 0 };
+        monthlyMap[monthKey] = {
+          date: monthKey,
+          runDistance: 0,
+          swimDistance: 0,
+          rideDistance: 0,
+          runDuration: 0,
+          swimDuration: 0,
+          rideDuration: 0,
+        };
       }
       
       monthlyMap[monthKey].runDistance += (entry.runDistance || 0);
       monthlyMap[monthKey].swimDistance += (entry.swimDistance || 0);
       monthlyMap[monthKey].rideDistance += (entry.rideDistance || 0);
+      monthlyMap[monthKey].runDuration += (entry.runDuration || 0);
+      monthlyMap[monthKey].swimDuration += (entry.swimDuration || 0);
+      monthlyMap[monthKey].rideDuration += (entry.rideDuration || 0);
     });
     
     return Object.values(monthlyMap).sort((a, b) => a.date.localeCompare(b.date));
@@ -324,7 +409,7 @@ export default function TrendsPage() {
                     <div className="mb-8 flex items-center justify-between">
                         <div>
                             <h3 className="text-label text-[var(--text-display)]">Volumen Mensual</h3>
-                            <p className="text-label text-[var(--text-disabled)] mt-1">Kilómetros acumulados por mes</p>
+                            <p className="text-label text-[var(--text-disabled)] mt-1">Tiempo acumulado por mes</p>
                         </div>
                         <BarChart3 className="h-4 w-4 text-[var(--interactive)]" strokeWidth={1.5} />
                     </div>
@@ -345,12 +430,14 @@ export default function TrendsPage() {
                                       fontSize={10} 
                                       axisLine={false} 
                                       tickLine={false} 
+                                      tickFormatter={formatYAxisHours}
                                       tick={{ fill: 'var(--text-disabled)', fontFamily: 'var(--font-mono)' }} 
                                   />
-                                  <Tooltip content={<CustomTooltip />} />
-                                  <Bar name="Running (km)" dataKey="runDistance" stackId="a" fill="#10B981" radius={0} />
-                                  <Bar name="Ciclismo (km)" dataKey="rideDistance" stackId="a" fill="#F59E0B" radius={0} />
-                                  <Bar name="Swimming (km)" dataKey="swimDistance" stackId="a" fill="#3B82F6" radius={0} />
+                                  <Tooltip content={<MonthlyVolumeTooltip />} cursor={{ fill: 'rgba(255, 255, 255, 0.05)' }} />
+                                  {/* Ordered stack: Natación (macOS Blue) -> Ciclismo (macOS Gold) -> Running (macOS Green) */}
+                                  <Bar name="Natación" dataKey="swimDuration" stackId="a" fill="#007AFF" radius={0} />
+                                  <Bar name="Ciclismo" dataKey="rideDuration" stackId="a" fill="#FF9500" radius={0} />
+                                  <Bar name="Running" dataKey="runDuration" stackId="a" fill="#34C759" radius={0} />
                               </BarChart>
                           </ResponsiveContainer>
                         )}

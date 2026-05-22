@@ -237,10 +237,17 @@ export async function GET(req: NextRequest) {
 
     // 5. Transform Wellness Data
     const latest = latestWellness || (dbWellness.length > 0 ? dbWellness[dbWellness.length - 1] : null);
+    
+    const latestCtl = latest?.ctl ?? null;
+    const latestAtl = latest?.atl ?? null;
+    const latestTsb = latest?.tsb !== null && latest?.tsb !== undefined
+      ? latest.tsb
+      : (latestCtl !== null && latestAtl !== null ? latestCtl - latestAtl : null);
+
     const wellness: WellnessData = {
-      ctl: latest?.ctl ?? null,
-      atl: latest?.atl ?? null,
-      tsb: latest?.tsb ?? null,
+      ctl: latestCtl,
+      atl: latestAtl,
+      tsb: latestTsb,
       hrv: latest?.hrv ?? null,
       sleepScore: latest?.sleep_score ?? latest?.sleep_quality ?? null,
       restingHR: latest?.resting_hr ?? null,
@@ -255,7 +262,11 @@ export async function GET(req: NextRequest) {
     
     if ((view === "monthly" || view === "yearly") && dbWellness.length > 0) {
       const hrvValues = dbWellness.map(d => d.hrv).filter(v => v != null);
-      const tsbValues = dbWellness.map(d => d.tsb).filter(v => v != null);
+      const tsbValues = dbWellness.map(d => {
+        const c = d.ctl ?? null;
+        const a = d.atl ?? null;
+        return d.tsb !== null && d.tsb !== undefined ? d.tsb : (c !== null && a !== null ? c - a : null);
+      }).filter(v => v != null);
       if (hrvValues.length > 0) {
         summaryStats.maxHRV = Math.max(...hrvValues);
         summaryStats.minHRV = Math.min(...hrvValues);
@@ -293,25 +304,53 @@ export async function GET(req: NextRequest) {
     const chartDataMap: Record<string, ChartDataEntry> = {};
     dbWellness.forEach(w => {
       const date = w.date;
+      const ctl = w.ctl || null;
+      const atl = w.atl || null;
+      const tsb = w.tsb !== null && w.tsb !== undefined ? w.tsb : (ctl !== null && atl !== null ? ctl - atl : null);
+
       chartDataMap[date] = {
         date,
-        ctl: w.ctl || null,
-        atl: w.atl || null,
-        tsb: w.tsb || null,
+        ctl,
+        atl,
+        tsb,
         runDistance: 0,
         swimDistance: 0,
         rideDistance: 0,
+        runDuration: 0,
+        swimDuration: 0,
+        rideDuration: 0,
       };
     });
 
     activities.forEach(a => {
       const date = a.date.split("T")[0];
       if (!chartDataMap[date]) {
-        chartDataMap[date] = { date, ctl: null, atl: null, tsb: null, runDistance: 0, swimDistance: 0, rideDistance: 0 };
+        chartDataMap[date] = {
+          date,
+          ctl: null,
+          atl: null,
+          tsb: null,
+          runDistance: 0,
+          swimDistance: 0,
+          rideDistance: 0,
+          runDuration: 0,
+          swimDuration: 0,
+          rideDuration: 0,
+        };
       }
-      if (a.type === "Run") chartDataMap[date].runDistance += a.distance;
-      if (a.type === "Swim") chartDataMap[date].swimDistance += a.distance;
-      if (a.type === "Ride") chartDataMap[date].rideDistance += a.distance;
+      const durationMins = (a.duration || 0) / 60;
+      if (a.type === "Run") {
+        chartDataMap[date].runDistance += a.distance;
+        chartDataMap[date].runDuration = (chartDataMap[date].runDuration || 0) + durationMins;
+      }
+      if (a.type === "Swim") {
+        chartDataMap[date].swimDistance += a.distance;
+        chartDataMap[date].swimDuration = (chartDataMap[date].swimDuration || 0) + durationMins;
+      }
+      if (a.type === "Ride") {
+        chartDataMap[date].rideDistance += a.distance;
+        chartDataMap[date].rideDuration = (chartDataMap[date].rideDuration || 0) + durationMins;
+      }
     });
 
     const chartData = Object.values(chartDataMap).sort((a, b) => a.date.localeCompare(b.date));

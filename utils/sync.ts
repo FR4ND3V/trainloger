@@ -56,31 +56,47 @@ export async function syncUserData(userId: string, daysBack: number = 90) {
         // Ensure today's date exists in the formatted array even if not in wellnessData
         let hasToday = wellnessData.some(w => w.id === newestStr);
         
-        const formattedWellness = wellnessData.map((w: any) => ({
-          user_id: userId,
-          date: w.id,
-          ctl: w.ctl ?? w.icu_ctl ?? (w.id === newestStr ? athleteFitness?.ctl : null),
-          atl: w.atl ?? w.icu_atl ?? (w.id === newestStr ? athleteFitness?.atl : null),
-          tsb: w.tsb ?? w.icu_tsb ?? (w.id === newestStr ? athleteFitness?.tsb : null),
-          hrv: w.hrv ?? w.icu_hrv ?? null,
-          hrv_score: w.hrv_score,
-          resting_hr: w.resting_hr,
-          sleep_secs: w.sleep_secs,
-          sleep_quality: w.sleep_quality,
-          weight: w.weight,
-          body_fat: w.body_fat,
-          readiness: w.readiness,
-          raw_data: w
-        }))
+        const formattedWellness = wellnessData.map((w: any) => {
+          const ctl = w.ctl ?? w.icu_ctl ?? (w.id === newestStr ? athleteFitness?.ctl : null);
+          const atl = w.atl ?? w.icu_atl ?? (w.id === newestStr ? athleteFitness?.atl : null);
+          let tsb = w.tsb ?? w.icu_tsb ?? null;
+          
+          if (tsb === null && ctl !== null && atl !== null) {
+            tsb = ctl - atl;
+          } else if (tsb === null && w.id === newestStr && athleteFitness?.tsb !== undefined && athleteFitness?.tsb !== null) {
+            tsb = athleteFitness.tsb;
+          }
+
+          return {
+            user_id: userId,
+            date: w.id,
+            ctl,
+            atl,
+            tsb,
+            hrv: w.hrv ?? w.icu_hrv ?? null,
+            hrv_score: w.hrv_score,
+            resting_hr: w.resting_hr,
+            sleep_secs: w.sleep_secs,
+            sleep_quality: w.sleep_quality,
+            weight: w.weight,
+            body_fat: w.body_fat,
+            readiness: w.readiness,
+            raw_data: w
+          };
+        });
 
         // If today is missing from historical wellness, add it from athlete data
         if (!hasToday && athleteFitness) {
+          const ctl = athleteFitness.ctl ?? null;
+          const atl = athleteFitness.atl ?? null;
+          const tsb = athleteFitness.tsb ?? (ctl !== null && atl !== null ? ctl - atl : null);
+
           formattedWellness.push({
             user_id: userId,
             date: newestStr,
-            ctl: athleteFitness.ctl,
-            atl: athleteFitness.atl,
-            tsb: athleteFitness.tsb,
+            ctl,
+            atl,
+            tsb,
             hrv: null,
             hrv_score: null,
             resting_hr: null,
@@ -138,6 +154,27 @@ export async function syncUserData(userId: string, daysBack: number = 90) {
         await supabase
           .from('activities')
           .upsert(formattedActivities, { onConflict: 'id,user_id' })
+
+        // Cleanup: remove activities that are no longer present in Intervals
+        const apiIds = new Set(formattedActivities.map((a: any) => a.id))
+        const { data: existing, error: fetchExistingErr } = await supabase
+          .from('activities')
+          .select('id')
+          .eq('user_id', userId)
+          .gte('start_date', oldestStr)
+        if (!fetchExistingErr && existing) {
+          const idsToDelete = existing
+            .filter((a: any) => !apiIds.has(a.id))
+            .map((a: any) => a.id)
+          if (idsToDelete.length > 0) {
+            const { error: deleteErr } = await supabase
+              .from('activities')
+              .delete()
+              .in('id', idsToDelete)
+              .eq('user_id', userId)
+            if (deleteErr) console.error('Failed to delete stale activities', deleteErr)
+          }
+        }
       }
     }
   } catch (err) {

@@ -37,6 +37,7 @@ import CoachPanel from "./components/CoachPanel";
 import SyncButton from "./components/SyncButton";
 import SegmentedProgressBar from "./components/SegmentedProgressBar";
 import FitnessStatus from "./components/FitnessStatus";
+import VolumeDistributionChart from "./components/VolumeDistributionChart";
 import type { DashboardData, CoachAnalysis, Activity } from "./types";
 
 const MONTHS = [
@@ -210,9 +211,12 @@ export default function DashboardPage() {
     const avgNP = withPower.length ? withPower.reduce((s, a) => s + (a.normalizedPower || 0), 0) / withPower.length : null;
     const withIF = rides.filter(a => a.intensityFactor);
     const avgIF = withIF.length ? withIF.reduce((s, a) => s + (a.intensityFactor || 0), 0) / withIF.length : null;
+    // FTP = average of NP / IF for rides where both exist
+    const withFTP = rides.filter(a => a.normalizedPower && a.intensityFactor);
+    const avgFTP = withFTP.length ? withFTP.reduce((s, a) => s + ((a.normalizedPower || 0) / (a.intensityFactor || 1)), 0) / withFTP.length : null;
     const totalElev = rides.reduce((s, a) => s + (a.elevationGain || 0), 0);
     const avgSpeed = rides.reduce((s, a) => s + (a.avgSpeed || 0), 0) / rides.length;
-    return { avgNP, avgIF, totalElev, avgSpeed };
+    return { avgNP, avgIF, avgFTP, totalElev, avgSpeed };
   }, [data]);
 
   return (
@@ -401,6 +405,10 @@ export default function DashboardPage() {
                     <span className="font-mono text-[var(--text-display)]">{bikeMetrics.avgIF ? formatNum(bikeMetrics.avgIF, 2) : "—"}</span>
                   </div>
                   <div className="flex items-center justify-between border-b border-[var(--border)] pb-4">
+                    <span className="text-label text-[var(--text-secondary)]">FTP</span>
+                    <span className="font-mono text-[var(--text-primary)]">{bikeMetrics.avgFTP ? `${formatNum(bikeMetrics.avgFTP, 0)} W` : "—"}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-b border-[var(--border)] pb-4">
                     <span className="text-label text-[var(--text-secondary)]">Vel. Media</span>
                     <span className="font-mono text-[var(--text-primary)]">{formatNum(bikeMetrics.avgSpeed, 1)} km/h</span>
                   </div>
@@ -497,36 +505,12 @@ export default function DashboardPage() {
                 <div className="mb-8 flex items-center justify-between">
                     <div>
                         <h3 className="text-label text-[var(--text-display)]">Distribución de Volumen</h3>
-                        <p className="text-label text-[var(--text-disabled)] mt-1">Kilómetros por deporte</p>
+                        <p className="text-label text-[var(--text-disabled)] mt-1">Tiempo por deporte</p>
                     </div>
                     <BarChart3 className="h-4 w-4 text-[var(--interactive)]" strokeWidth={1.5} />
                 </div>
                 <div className="h-[300px] min-h-[300px] w-full flex items-center justify-center overflow-hidden">
-                    {mounted && data?.chartData && (
-                      <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                          <BarChart data={data?.chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                              <XAxis 
-                                  dataKey="date" 
-                                  fontSize={10} 
-                                  tickFormatter={(str) => new Date(str).toLocaleDateString("es-ES", { day: 'numeric' })}
-                                  axisLine={false}
-                                  tickLine={false}
-                                  tick={{ fill: 'var(--text-disabled)', fontFamily: 'var(--font-mono)' }}
-                              />
-                              <YAxis 
-                                  fontSize={10} 
-                                  axisLine={false} 
-                                  tickLine={false} 
-                                  tick={{ fill: 'var(--text-disabled)', fontFamily: 'var(--font-mono)' }} 
-                              />
-                              <Tooltip content={<CustomTooltip />} />
-                              <Bar name="Running" dataKey="runDistance" fill="var(--success)" radius={0} />
-                              <Bar name="Ciclismo" dataKey="rideDistance" fill="var(--warning)" radius={0} />
-                              <Bar name="Natación" dataKey="swimDistance" fill="var(--interactive)" radius={0} />
-                          </BarChart>
-                      </ResponsiveContainer>
-                    )}
+                    <VolumeDistributionChart data={data?.chartData} />
                 </div>
             </div>
         </section>

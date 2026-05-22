@@ -17,6 +17,9 @@ export interface ChartDataEntry {
   runDistance: number;
   swimDistance: number;
   rideDistance: number;
+  runDuration?: number;
+  swimDuration?: number;
+  rideDuration?: number;
 }
 
 // ─── Activity Types ─────────────────────────────────────────────────
